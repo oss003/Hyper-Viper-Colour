@@ -1,0 +1,2271 @@
+
+                   6502 Macro Assembler   -   Version 4.00f 
+                Copyright (C) 1985 by 2500 A.D. Software, Inc.
+
+
+                         ***** Active Commands *****
+
+                           Ctrl S = Stop Output
+                           Ctrl Q = Start Output
+                           Esc  C = Stop Assembly
+                           Esc  T = Terminal Output
+                           Esc  P = Printer Output
+                           Esc  D = Disk Output
+                           Esc  M = Multiple Output
+                           Esc  N = No Output
+
+
+  Tue Dec 29 2015 15:46                                                                                                  Page    1
+
+
+
+
+
+
+
+               2500 A.D. 6502 Macro Assembler  -  Version 4.00f
+               ------------------------------------------------
+
+                       Input  Filename : hyper.asm
+                       Output Filename : hyper.obj
+
+
+    1          2A00             codebase     equ $2a00
+    2          3900             sprites      equ $3900
+    3                           
+    4   29EA                                   org codebase-22
+    5                           
+    6                           ;****************************************
+    7                           ; Header for Atom emulator Wouter Ras
+    8   29EA   43 48 59 50 45                    .db "CHYPER          "
+        29EF   52 20 20 20 20 
+        29F4   20 20 20 20 20 
+        29F9   20 
+    9   29FA   002A                              .dw codebase
+   10   29FC   002A                              .dw codebase
+   11   29FE   7810                              .dw eind_asm-start_asm
+   12                           ;****************************************
+   13   2A00                    start_asm    
+   14   2A00                                   include hyper.inc
+   15                           ;--------------------------------------------------------------------------
+   16                           ; HYPER VIPER
+   17                           ;
+   18                           ; Written by Kenton Price in 1986
+   19                           ; Enhancements for release by Paul Davis
+   20                           ; Joystick support by Pitfall Jones
+   21                           ; Atom version by Kees van Oss
+   22                           ;
+   23                           ; Version 1.1
+   24                           ; Released by Retro Software, January 2011
+   25                           ; http://www.retrosoftware.co.uk/hyperviper
+   26                           ;--------------------------------------------------------------------------
+   27                           ; This work is licensed by Kenton Price (retrosoftware@kentonprice.com)
+   28                           ; under the Creative Commons Attribution-NonCommercial-ShareAlike
+   29                           ; 3.0 Unported License.
+   30                           ;
+   31                           ; To view a copy of this licence, visit
+   32                           ; http://creativecommons.org/licenses/by-nc-sa/3.0/
+   33                           ; or send a letter to Creative Commons, 171 Second Street,
+   34                           ; Suite 300, San Francisco, California 94105, USA.
+   35                           ;--------------------------------------------------------------------------
+   36                           
+   37          0070             tmp      equ $70
+   38          0060             text_ptr equ $60
+   39                           
+   40                           ; os call entry points
+   41          FE71             osrdch                       equ $fe71
+   42          FE94             osrdkey                      equ $fe94
+   43          C986             osrnd                        equ $c986
+   44          FE66             oswaitsync                   equ $fe66
+   45                           ;oswrch = &FFEE
+   46                           ;osword = &FFF1
+   47                           ;osbyte = &FFF4
+   48                           ;oscli = &FFF7
+   49                           
+   50                           ; sprite/score data
+   51          3900             snake_segment_pointers       equ sprites
+   52          3970             rock_sprite_data             equ sprites+$70
+   53          3980             score                        equ sprites+$80
+   54          3990             mushroom_sprite_data         equ sprites+$90
+   55          39A0             brick_wall_sprite_data       equ sprites+$A0
+   56          39B0             snake_body_sprite_data       equ sprites+$B0
+   57          39C0             snake_head_sprite_data       equ sprites+$c0
+   58          39D0             snake_head_right_sprite_data equ sprites+$D0
+   59                           
+   60                           ; game constants
+   61          000D             max_lives_count             equ 13
+   62          0005             max_screen_number           equ 5
+   63          0005             initial_snake_segment_count equ 5
+   64          0005             initial_lives_count         equ 5
+   65          001E             initial_flash_duration      equ 30
+   66          0000             initial_sound_flag          equ 0
+   67          0005             game_speed                  equ 5
+   68          0014             mushroom_count              equ 20
+   69          0003             safe_zone_size              equ 3
+   70          0032             wait_time                   equ 50
+   71                           
+   72                           ; game variables
+   73          00C0             snake_head_ptr              equ $c0
+   74          00C2             ptr                         equ $c2
+   75          00C4             safe_zone_left_ptr          equ $c4
+   76          00C6             safe_zone_right_ptr         equ $c6
+   77          00C8             high_score_entry_ptr        equ $c8
+   78          00CA             high_score_copy_ptr         equ $ca
+   79                           ;tune_ptr                    equ $cc
+   80                           
+   81          0300             snake_segment_count         equ $300
+   82          0301             snake_direction             equ $301
+   83          0302             pause_flag                  equ $302
+   84          0304             collision_object            equ $304
+   85          0309             last_screen_number          equ $309
+   86          030A             timer0                      equ $30a
+   87          030B             timer1                      equ $30b
+   88          030C             timer2                      equ $30c
+   89          030D             sound_flag                  equ $30D
+   90          0312             flash_counter               equ $312
+   91          0314             flash_duration              equ $314
+   92          0316             high_score_crsr_pos         equ $316
+   93          0317             high_score_entry_pos        equ $317
+   94          0318             last_rock_ptr               equ $318
+   95          031D             counter                     equ $31D
+   96          031E             current_screen_number       equ $31E
+   97          031F             lives_counter               equ $31F
+   98                           
+   99          0240             x_tmp    equ $240
+  100          0241             y_tmp    equ $241
+  101          0242             store0   equ $242
+  102          0243             store1   equ $243
+  103          0244             store2   equ $244
+  104          0245             store3   equ $245
+  105                           
+  106          0000             green    equ $00
+  107          0040             yellow   equ $40
+  108          0080             blue     equ $80
+  109          00C0             red      equ $c0
+  110                           
+  111                           ; screen constants
+  112          0008             bytes_per_character          equ 8
+  113          0020             character_per_line           equ 32
+  114                           ;bytes_per_line               equ bytes_per_character*character_per_line
+  115                           
+  116          8019             lives_screen_location        equ $8000+25+0*$100
+  117          820F             flashing_mushroom_location   equ $820F ;??????????????
+  118          8E0C             snake_start_location         equ $8000+12+14*$100
+  119                           
+  120                           ; sprite image constants
+  121          00DF             mushroom_image               equ $df
+  122          00A8             rock_image                   equ $a8
+  123          00F7             wall_image                   equ $f7
+  124                           
+  125                           ; movement direction constants
+  126          0001             dir_left                     equ 1
+  127          0002             dir_right                    equ 2
+  128          0003             dir_up                       equ 3
+  129          0004             dir_down                     equ 4
+  130                           
+  131                           
+  132                           ;-------------------------------------------------------------
+  133                           ;MAIN
+  134                           ;-------------------------------------------------------------
+  135                           
+  136   2A00                    dwnld:
+  137                                   ; entry point to the game
+  138                                   ; initialise screen display
+  139                           
+  140   2A00   A9 00                    LDA #initial_sound_flag
+  141   2A02   8D 0D 03                 STA sound_flag
+  142   2A05   A9 01                    LDA #1
+  143   2A07   8D 09 03                 STA last_screen_number
+  144                           ;       JMP title_screen
+  145                           
+  146                           ;-------------------------------------------------------------
+  147   2A0A                    title_screen:
+  148                                   ; swap between title screen and high score screen
+  149                                   ; until space bar is pressed
+  150   2A0A   A9 00                    LDA #0
+  151   2A0C                    show_screen:
+  152   2A0C   8D 0A 03                 STA timer0
+  153   2A0F   8D 0B 03                 STA timer1
+  154   2A12   AD 5B 32                 LDA screen_duration
+  155   2A15   8D 0C 03                 STA timer2
+  156   2A18                    tsloop:
+  157   2A18   AD 0A 03                 LDA timer0
+  158   2A1B   29 01                    AND #1
+  159   2A1D   D0 06                    BNE high
+  160   2A1F   20 E4 31                 JSR display_title_screen
+  161   2A22   4C 28 2A                 JMP waitkey
+  162   2A25                    high:
+  163   2A25   20 0A 32                 JSR display_high_scores
+  164   2A28                    waitkey:
+  165   2A28   20 14 32                 JSR display_press_space
+  166   2A2B   A9 01                    LDA #1
+  167   2A2D   8D 1E 03                 STA current_screen_number
+  168   2A30                    walp:
+  169                           ;joy:
+  170                           ;       LDA #1
+  171                           ;       STA use_joystick
+  172                           ;       BEQ nofire
+  173                           ;       JSR check_fire
+  174                           ;       BCS play
+  175                           ;       LDA #0
+  176                           ;       STA use_joystick
+  177                                   ; check for space bar
+  178   2A30                    nofire:
+  179   2A30   20 71 FE                 jsr osrdch
+  180   2A33   C0 00                    cpy #0
+  181   2A35   F0 16                    BEQ play
+  182                           
+  183   2A37   CE 0B 03                 DEC timer1
+  184   2A3A   D0 F4                    BNE walp
+  185   2A3C   CE 0C 03                 DEC timer2
+  186   2A3F   D0 EF                    BNE walp
+  187   2A41   AD 5B 32                 LDA screen_duration
+  188   2A44   8D 0C 03                 STA timer2
+  189   2A47   EE 0A 03                 INC timer0
+  190   2A4A   4C 18 2A                 JMP tsloop
+  191                           ;-------------------------------------------------------------
+  192   2A4D                    play:
+  193                                   ; check which screen the player got up to last time
+  194                                   ; if >1 offer the choice of screen to play
+  195   2A4D   AD 09 03                 LDA last_screen_number
+  196   2A50   C9 01                    CMP #1
+  197   2A52   F0 3A                    BEQ le1
+  198   2A54   A0 00                    LDY #0
+  199   2A56                    levv:
+  200   2A56   20 1B 32                 jsr display_which_screen
+  201   2A59   18                       CLC
+  202   2A5A   AD 09 03                 LDA last_screen_number
+  203   2A5D   69 30                    ADC #'0'
+  204   2A5F   A2 18                    ldx #24
+  205   2A61   A0 12                    ldy #18
+  206   2A63   20 6C 38                 jsr PUTCHAR
+  207                           
+  208   2A66   18                       CLC
+  209   2A67   AD 09 03                 LDA last_screen_number
+  210   2A6A   69 31                    ADC #'1'
+  211   2A6C   8D 09 03                 STA last_screen_number
+  212   2A6F                    log:
+  213   2A6F   20 71 FE                 JSR osrdch
+  214   2A72   98                       tya
+  215   2A73   18                       clc
+  216   2A74   69 20                    adc #$20
+  217   2A76   C9 31                    CMP #'1'
+  218   2A78   30 F5                    BMI log
+  219   2A7A   CD 09 03                 CMP last_screen_number
+  220   2A7D   10 F0                    BPL log
+  221   2A7F   38                       SEC
+  222   2A80   E9 30                    SBC #'0'
+  223   2A82   8D 1E 03                 STA current_screen_number
+  224   2A85   38                       SEC
+  225   2A86   AD 09 03                 LDA last_screen_number
+  226   2A89   E9 31                    SBC #'1'
+  227   2A8B   8D 09 03                 STA last_screen_number
+  228                                   ; display status panel
+  229   2A8E                    le1:
+  230   2A8E   20 22 32                 jsr display_status_panel
+  231                                   ; reset game variables
+  232   2A91   A9 00                    LDA #0
+  233   2A93   8D 80 39                 STA score
+  234   2A96   8D 81 39                 STA score+1
+  235   2A99   8D 82 39                 STA score+2
+  236   2A9C   8D 83 39                 STA score+3
+  237   2A9F   A9 1E                    LDA #initial_flash_duration
+  238   2AA1   8D 14 03                 STA flash_duration
+  239   2AA4   A9 05                    LDA #initial_lives_count
+  240   2AA6   8D 1F 03                 STA lives_counter
+  241   2AA9                    prsn:
+  242                           ;       JMP go
+  243                           
+  244                           ;-------------------------------------------------------------
+  245   2AA9                    go:
+  246   2AA9   A9 00                    LDA #0
+  247   2AAB   8D 02 03                 STA pause_flag
+  248                           
+  249                           ;       LDA #<tune_data
+  250                           ;       STA tune_ptr
+  251                           ;       LDA #>tune_data
+  252                           ;       STA tune_ptr+1
+  253                           
+  254                               ; Draw snake head in playfield  
+  255   2AAE   A9 C0                    LDA #<snake_head_sprite_data    
+  256   2AB0   85 C2                    STA ptr
+  257   2AB2   A9 39                    LDA #>snake_head_sprite_data
+  258   2AB4   85 C3                    STA ptr+1
+  259   2AB6   A9 0C                    LDA #<snake_start_location
+  260   2AB8   85 C0                    STA snake_head_ptr
+  261   2ABA   A9 8E                    LDA #>snake_start_location
+  262   2ABC   85 C1                    STA snake_head_ptr+1
+  263   2ABE   20 FD 2F                 JSR draw_snake_head
+  264   2AC1   A9 05                    LDA #initial_snake_segment_count
+  265   2AC3   8D 00 03                 STA snake_segment_count
+  266   2AC6   A9 01                    LDA #dir_left
+  267   2AC8   8D 01 03                 STA snake_direction
+  268                               ; Draw snake body segments in playfield
+  269   2ACB   A2 00                    LDX #0
+  270   2ACD                    wcr:
+  271   2ACD   18                       CLC
+  272   2ACE   8A                       txa
+  273   2ACF   4A                       lsr a
+  274   2AD0   69 0D                    ADC #<(snake_start_location+1)
+  275   2AD2   9D 02 39                 STA snake_segment_pointers+2,X
+  276   2AD5   85 C2                    STA ptr
+  277   2AD7   A9 8E                    LDA #>snake_start_location
+  278   2AD9   9D 03 39                 STA snake_segment_pointers+3,X
+  279   2ADC   85 C3                    STA ptr+1
+  280   2ADE   20 1A 30                 JSR draw_snake_segment
+  281   2AE1   E8                       INX
+  282   2AE2   E8                       INX
+  283   2AE3   E0 08                    CPX #8
+  284   2AE5   D0 E6                    BNE wcr
+  285                           
+  286                               ; Draw brick wall around edge of screen
+  287   2AE7   A9 00                    LDA #<($8000+0+3*$100)
+  288   2AE9   85 C2                    STA ptr
+  289   2AEB   A9 83                    LDA #>($8000+0+3*$100)
+  290   2AED   85 C3                    STA ptr+1
+  291   2AEF   A9 20                    LDA #32
+  292   2AF1   8D 1D 03                 STA counter
+  293   2AF4   20 51 30                 JSR draw_horizontal_wall    ;Top
+  294   2AF7   A9 00                    lda #0
+  295   2AF9   85 C2                    sta ptr
+  296   2AFB   A9 14                    LDA #20
+  297   2AFD   8D 1D 03                 STA counter
+  298   2B00   20 70 30                 JSR draw_vertical_wall      ;Left
+  299   2B03   A9 20                    LDA #32
+  300   2B05   8D 1D 03                 STA counter
+  301   2B08   20 51 30                 JSR draw_horizontal_wall    ;Right
+  302   2B0B   A9 1F                    LDA #<($8000+31+3*$100)
+  303   2B0D   85 C2                    STA ptr
+  304   2B0F   A9 83                    LDA #>($8000+31+3*$100)
+  305   2B11   85 C3                    STA ptr+1
+  306   2B13   A9 15                    LDA #21
+  307   2B15   8D 1D 03                 STA counter
+  308   2B18   20 70 30                 JSR draw_vertical_wall      ;Bottom
+  309                           
+  310                               ; Check screen number to start
+  311   2B1B   AD 1E 03                 LDA current_screen_number
+  312   2B1E   C9 01                    CMP #1
+  313   2B20   D0 03                    BNE kk
+  314   2B22   4C 00 2C                 JMP mushy
+  315   2B25                    kk:
+  316   2B25   C9 02                    CMP #2
+  317   2B27   F0 0C                    BEQ scr2
+  318   2B29   C9 03                    CMP #3
+  319   2B2B   F0 27                    BEQ scr3
+  320   2B2D   C9 04                    CMP #4
+  321   2B2F   F0 4F                    BEQ scr4
+  322   2B31   C9 05                    CMP #5
+  323   2B33   10 7F                    BPL scr5
+  324   2B35                    scr2:
+  325   2B35   A9 10                    LDA #<($8000+16+3*$100)     ;Draw screen 2
+  326   2B37   85 C2                    STA ptr
+  327   2B39   A9 83                    LDA #>($8000+16+3*$100)
+  328   2B3B   85 C3                    STA ptr+1
+  329   2B3D   A9 07                    LDA #7
+  330   2B3F   8D 1D 03                 STA counter
+  331   2B42   20 70 30                 JSR draw_vertical_wall
+  332   2B45   A9 90                    LDA #>($8000+16+16*$100)
+  333   2B47   85 C3                    STA ptr+1
+  334   2B49   A9 07                    LDA #7
+  335   2B4B   8D 1D 03                 STA counter
+  336   2B4E   20 70 30                 JSR draw_vertical_wall
+  337   2B51   4C 00 2C                 JMP mushy
+  338   2B54                    scr3:
+  339   2B54   A9 0A                    LDA #<($8000+10+3*$100)     ;Draw screen 3
+  340   2B56   85 C2                    STA ptr
+  341   2B58   A9 83                    LDA #>($8000+10+3*$100)
+  342   2B5A   85 C3                    STA ptr+1
+  343   2B5C   A9 07                    LDA #7
+  344   2B5E   8D 1D 03                 STA counter
+  345   2B61   20 70 30                 JSR draw_vertical_wall
+  346   2B64   A9 90                    LDA #>($8000+10+16*$100)
+  347   2B66   85 C3                    STA ptr+1
+  348   2B68   20 70 30                 JSR draw_vertical_wall
+  349   2B6B   A9 15                    LDA #<($8000+21+3*$100)
+  350   2B6D   85 C2                    STA ptr
+  351   2B6F   A9 83                    LDA #>($8000+21+3*$100)
+  352   2B71   85 C3                    STA ptr+1
+  353   2B73   20 70 30                 JSR draw_vertical_wall
+  354   2B76   A9 90                    LDA #>($8000+21+16*$100)
+  355   2B78   85 C3                    STA ptr+1
+  356   2B7A   20 70 30                 JSR draw_vertical_wall
+  357   2B7D   4C 00 2C                 JMP mushy
+  358   2B80                    scr4:
+  359   2B80   A9 01                    LDA #<($8000+1+13*$100)     ;Draw screen 4
+  360   2B82   85 C2                    STA ptr
+  361   2B84   A9 8D                    LDA #>($8000+1+13*$100)
+  362   2B86   85 C3                    STA ptr+1
+  363   2B88   A9 0A                    LDA #10
+  364   2B8A   8D 1D 03                 STA counter
+  365   2B8D   20 51 30                 JSR draw_horizontal_wall
+  366   2B90   A9 15                    LDA #<($8000+21+13*$100)
+  367   2B92   85 C2                    STA ptr
+  368   2B94   20 51 30                 JSR draw_horizontal_wall
+  369   2B97   A9 10                    LDA #<($8000+16+3*$100)
+  370   2B99   85 C2                    STA ptr
+  371   2B9B   A9 83                    LDA #>($8000+16+3*$100)
+  372   2B9D   85 C3                    STA ptr+1
+  373   2B9F   A9 07                    LDA #7
+  374   2BA1   8D 1D 03                 STA counter
+  375   2BA4   20 70 30                 JSR draw_vertical_wall
+  376   2BA7   A9 8F                    LDA #>($8000+16+15*$100)
+  377   2BA9   85 C3                    STA ptr+1
+  378   2BAB   EE 1D 03                 inc counter
+  379   2BAE   20 70 30                 JSR draw_vertical_wall
+  380   2BB1   4C 00 2C                 JMP mushy
+  381   2BB4                    scr5:
+  382   2BB4   A9 07                    LDA #<($8000+7+3*$100)     ;Draw screen 5
+  383   2BB6   85 C2                    STA ptr
+  384   2BB8   A9 83                    LDA #>($8000+7+3*$100)
+  385   2BBA   85 C3                    STA ptr+1
+  386   2BBC   A9 11                    LDA #17
+  387   2BBE   8D 1D 03                 STA counter
+  388   2BC1   20 70 30                 JSR draw_vertical_wall
+  389   2BC4   A9 18                    LDA #<($8000+24+7*$100)
+  390   2BC6   85 C2                    STA ptr
+  391   2BC8   A9 87                    LDA #>($8000+24+7*$100)
+  392   2BCA   85 C3                    STA ptr+1
+  393   2BCC   20 70 30                 JSR draw_vertical_wall
+  394   2BCF   A9 0C                    LDA #<($8000+12+7*$100)
+  395   2BD1   85 C2                    STA ptr
+  396   2BD3   A9 87                    LDA #>($8000+12+7*$100)
+  397   2BD5   85 C3                    STA ptr+1
+  398   2BD7   A9 0C                    LDA #12
+  399   2BD9   8D 1D 03                 STA counter
+  400   2BDC   20 51 30                 JSR draw_horizontal_wall
+  401   2BDF   A9 08                    LDA #<($8000+8+11*$100)
+  402   2BE1   85 C2                    STA ptr
+  403   2BE3   A9 8B                    LDA #>($8000+8+11*$100)
+  404   2BE5   85 C3                    STA ptr+1
+  405   2BE7   20 51 30                 JSR draw_horizontal_wall
+  406   2BEA   A9 0C                    LDA #<($8000+12+15*$100)
+  407   2BEC   85 C2                    STA ptr
+  408   2BEE   A9 8F                    LDA #>($8000+12+15*$100)
+  409   2BF0   85 C3                    STA ptr+1
+  410   2BF2   20 51 30                 JSR draw_horizontal_wall
+  411   2BF5   A9 08                    LDA #<($8000+8+19*$100)
+  412   2BF7   85 C2                    STA ptr
+  413   2BF9   A9 93                    LDA #>($8000+8+19*$100)
+  414   2BFB   85 C3                    STA ptr+1
+  415   2BFD   20 51 30                 JSR draw_horizontal_wall
+  416                           
+  417                           ;-------------------------------------------------------------
+  418   2C00                    mushy
+  419                               ; Draw snake with number of lives left
+  420   2C00   AE 1F 03                 LDX lives_counter
+  421   2C03                    mushy2:
+  422   2C03   86 C2                    stx ptr
+  423   2C05   38                       sec
+  424   2C06   A9 19                    LDA #<lives_screen_location
+  425   2C08   E5 C2                    sbc ptr
+  426   2C0A   85 C2                    STA ptr
+  427   2C0C   A9 80                    LDA #>lives_screen_location
+  428   2C0E   85 C3                    STA ptr+1
+  429   2C10   20 1A 30                 JSR draw_snake_segment
+  430   2C13   CA                       DEX
+  431   2C14   D0 ED                    BNE mushy2
+  432   2C16   A9 D0                    LDA #<snake_head_right_sprite_data
+  433   2C18   85 C2                    STA ptr
+  434   2C1A   A9 39                    LDA #>snake_head_right_sprite_data
+  435   2C1C   85 C3                    STA ptr+1
+  436   2C1E   A9 19                    LDA #<lives_screen_location
+  437   2C20   85 C0                    STA snake_head_ptr
+  438   2C22   A9 80                    LDA #>lives_screen_location
+  439   2C24   85 C1                    STA snake_head_ptr+1
+  440   2C26   20 FD 2F                 JSR draw_snake_head
+  441                           
+  442                               ; Set snake head position
+  443   2C29   A9 0C                    LDA #<snake_start_location
+  444   2C2B   85 C0                    STA snake_head_ptr
+  445   2C2D   8D 00 39                 STA snake_segment_pointers
+  446   2C30   A9 8E                    LDA #>snake_start_location
+  447   2C32   85 C1                    STA snake_head_ptr+1
+  448   2C34   8D 01 39                 STA snake_segment_pointers+1
+  449                           
+  450                               ; Place mushrooms at random locations on screen
+  451   2C37   A2 14                    LDX #mushroom_count
+  452   2C39                    mush:
+  453   2C39   20 B1 2F                 JSR get_random_position
+  454                                   ; Don't place mushroom if something already there
+  455   2C3C   A0 40                    LDY #$40
+  456   2C3E   B1 C2                    LDA (ptr),Y
+  457   2C40   D0 F7                    BNE mush
+  458                                   ; Prevent mushrooms from being placed next to each other
+  459                                   ; mushroom in valid position
+  460   2C42   20 95 2F                 JSR display_mushroom
+  461   2C45   CA                       DEX
+  462   2C46   D0 F1                    BNE mush
+  463                           
+  464   2C48   AD 14 03                 LDA flash_duration
+  465   2C4B   8D 12 03                 STA flash_counter
+  466                           
+  467                               ; Place rocks at random locations on screen
+  468   2C4E   18                       CLC
+  469   2C4F   A9 04                    LDA #4
+  470   2C51   6D 1E 03                 ADC current_screen_number
+  471   2C54   6D 1E 03                 ADC current_screen_number
+  472   2C57   AA                       TAX
+  473   2C58                    rloop:
+  474   2C58   20 0E 2F                 JSR place_rock
+  475   2C5B   CA                       DEX
+  476   2C5C   D0 FA                    BNE rloop
+  477                           
+  478                               ; Save last rock position
+  479   2C5E   A5 C2                    LDA ptr
+  480   2C60   8D 18 03                 STA last_rock_ptr
+  481   2C63   A5 C3                    LDA ptr+1
+  482   2C65   8D 19 03                 STA last_rock_ptr+1
+  483                           
+  484                               ; 1 sec delay
+  485   2C68   A9 32                    LDA #wait_time
+  486   2C6A   85 C2                    STA ptr
+  487   2C6C                    wawaw:
+  488   2C6C   20 66 FE                 JSR oswaitsync
+  489   2C6F   C6 C2                    DEC ptr
+  490   2C71   D0 F9                    BNE wawaw
+  491                           
+  492                           ;        jsr $ffe3
+  493                           
+  494                           ;-------------------------------------------------------------
+  495                           ; Game loop if not dead 
+  496                           ;-------------------------------------------------------------
+  497   2C73                    eachgo:        
+  498   2C73   AD 02 B0                 lda $b002
+  499   2C76   49 04                    eor #4
+  500   2C78   8D 02 B0                 sta $b002
+  501                           
+  502                               ; Turn the last placed rock into a flashing mushroom
+  503   2C7B   AD 18 03                 LDA last_rock_ptr
+  504   2C7E   85 C2                    STA ptr
+  505   2C80   AD 19 03                 LDA last_rock_ptr+1
+  506   2C83   85 C3                    STA ptr+1
+  507                           ;       JSR oswaitsync
+  508   2C85   20 95 2F                 JSR display_mushroom
+  509   2C88   20 66 FE                 JSR oswaitsync
+  510   2C8B   20 36 30                 JSR delete_snake_segment
+  511                           
+  512                               ; Start keyscan
+  513   2C8E   20 71 FE                 JSR osrdch
+  514   2C91                    check_left:
+  515   2C91   C0 3A                    cpy #$3a        ; Z-key
+  516   2C93   D0 0E                    BNE check_right
+  517   2C95   AD 01 03                 LDA snake_direction ; ignore attempt to move the snake back on itself
+  518   2C98   C9 02                    CMP #dir_right
+  519   2C9A   F0 07                    BEQ check_right
+  520   2C9C   A9 01                    LDA #dir_left
+  521   2C9E   8D 01 03                 STA snake_direction
+  522   2CA1   D0 34                    BNE move
+  523   2CA3                    check_right:
+  524   2CA3   C0 38                    cpy #$38        ; X-key
+  525   2CA5   D0 0E                    BNE check_up
+  526   2CA7   AD 01 03                 LDA snake_direction ; ignore attempt to move the snake back on itself
+  527   2CAA   C9 01                    CMP #dir_left
+  528   2CAC   F0 07                    BEQ check_up
+  529   2CAE   A9 02                    LDA #dir_right
+  530   2CB0   8D 01 03                 STA snake_direction
+  531   2CB3   D0 22                    BNE move
+  532   2CB5                    check_up:
+  533   2CB5   C0 1B                    cpy #$1b        ; ;-key
+  534   2CB7   D0 0E                    BNE check_down
+  535   2CB9   AD 01 03                 LDA snake_direction ; ignore attempt to move the snake back on itself
+  536   2CBC   C9 04                    CMP #dir_down
+  537   2CBE   F0 07                    BEQ check_down
+  538   2CC0   A9 03                    LDA #dir_up
+  539   2CC2   8D 01 03                 STA snake_direction
+  540   2CC5   D0 10                    BNE move
+  541   2CC7                    check_down:
+  542   2CC7   C0 1E                    cpy #$1e        ; .-key
+  543   2CC9   D0 0C                    BNE move
+  544   2CCB   AD 01 03                 LDA snake_direction ; ignore attempt to move the snake back on itself
+  545   2CCE   C9 03                    CMP #dir_up
+  546   2CD0   F0 05                    BEQ move
+  547   2CD2   A9 04                    LDA #dir_down
+  548   2CD4   8D 01 03                 STA snake_direction
+  549                           
+  550                               ; Move snake in correct direction
+  551   2CD7                    move:
+  552   2CD7   20 7E 2F                 JSR move_snake_forwards
+  553   2CDA   AD 01 03                 LDA snake_direction
+  554   2CDD   C9 01                    CMP #dir_left
+  555   2CDF   F0 0B                    BEQ left
+  556   2CE1   C9 02                    CMP #dir_right
+  557   2CE3   F0 0C                    BEQ right
+  558   2CE5   C9 03                    CMP #dir_up
+  559   2CE7   F0 0D                    BEQ up
+  560   2CE9   4C FB 2C                 JMP down
+  561   2CEC                    left:
+  562   2CEC   C6 C0                    dec snake_head_ptr
+  563   2CEE   4C FD 2C                 JMP goon
+  564   2CF1                    right:
+  565   2CF1   E6 C0                    inc snake_head_ptr
+  566   2CF3   4C FD 2C                 JMP goon
+  567   2CF6                    up:
+  568   2CF6   C6 C1                    dec snake_head_ptr+1
+  569   2CF8   4C FD 2C                 JMP goon
+  570   2CFB                    down:
+  571   2CFB   E6 C1                    inc snake_head_ptr+1
+  572   2CFD                    goon:
+  573   2CFD   A5 C0                    LDA snake_head_ptr
+  574   2CFF   8D 00 39                 STA snake_segment_pointers
+  575   2D02   A5 C1                    LDA snake_head_ptr+1
+  576   2D04   8D 01 39                 STA snake_segment_pointers+1
+  577                           
+  578                                   ; check if snake has collided with anything
+  579   2D07   A0 40                    LDY #$40
+  580   2D09   B1 C0                    LDA (snake_head_ptr),Y
+  581   2D0B   8D 04 03                 STA collision_object
+  582                           
+  583                                   ; draw snake head in current direction
+  584                                   ; calculate sprite adres snake head left/right/up/down
+  585   2D0E   AD 01 03                 LDA snake_direction
+  586   2D11   18                       CLC
+  587   2D12   0A                       ASL A
+  588   2D13   0A                       ASL A
+  589   2D14   0A                       ASL A
+  590   2D15   0A                       ASL A
+  591   2D16   69 B0                    ADC #<snake_body_sprite_data
+  592   2D18   85 C2                    STA ptr
+  593   2D1A   A9 39                    LDA #>snake_body_sprite_data
+  594   2D1C   85 C3                    STA ptr+1
+  595                           ;       LDY #0
+  596   2D1E   20 FD 2F                 JSR draw_snake_head
+  597                           
+  598                                   ; draw snake segment over the head in previous location
+  599   2D21   AD 02 39                 LDA snake_segment_pointers+2
+  600   2D24   85 C2                    STA ptr
+  601   2D26   AD 03 39                 LDA snake_segment_pointers+3
+  602   2D29   85 C3                    STA ptr+1
+  603   2D2B   20 1A 30                 JSR draw_snake_segment
+  604                           
+  605                                   ; delete the last snake segment at the tail
+  606   2D2E   18                       CLC
+  607   2D2F   AD 00 03                 LDA snake_segment_count
+  608   2D32   0A                       ASL A
+  609   2D33   A8                       TAY
+  610   2D34   B9 00 39                 LDA snake_segment_pointers,Y
+  611   2D37   85 C2                    STA ptr
+  612   2D39   B9 01 39                 LDA snake_segment_pointers+1,Y
+  613   2D3C   85 C3                    STA ptr+1
+  614   2D3E   20 36 30                 JSR delete_snake_segment
+  615                           
+  616                               ; Check collision status
+  617   2D41   AD 04 03                 LDA collision_object
+  618   2D44   F0 3F                    BEQ ok3
+  619   2D46   C9 DF                    CMP #mushroom_image ; mushroom - eat
+  620   2D48   F0 11                    BEQ eat_mushroom
+  621   2D4A   AD 04 03                 LDA collision_object
+  622   2D4D   C9 A8                    CMP #rock_image ; rock - check if flashing first
+  623   2D4F   D0 07                    BNE deda ; anything else - die
+  624   2D51   AD 19 03                 LDA last_rock_ptr+1
+  625   2D54   C9 82                    CMP #>flashing_mushroom_location
+  626   2D56   F0 03                    BEQ eat_mushroom ; flashing mushroom - eat
+  627   2D58                    deda:
+  628   2D58   4C 58 2E                 JMP dead
+  629                           ;-------------------------------------------------------------
+  630   2D5B                    eat_mushroom:
+  631   2D5B   20 4B 3A                 JSR eat_sound
+  632                           
+  633   2D5E   20 0E 2F                 JSR place_rock
+  634                                   ; set this new rock to be the potential flashing mushroom
+  635                                   ; unless there is still one on the screen
+  636   2D61   AD 19 03                 LDA last_rock_ptr+1
+  637   2D64   C9 82                    CMP #>flashing_mushroom_location
+  638   2D66   D0 10                    BNE keke
+  639   2D68   A5 C2                    LDA ptr
+  640   2D6A   8D 18 03                 STA last_rock_ptr
+  641   2D6D   A5 C3                    LDA ptr+1
+  642   2D6F   8D 19 03                 STA last_rock_ptr+1
+  643   2D72   AD 14 03                 LDA flash_duration
+  644   2D75   8D 12 03                 STA flash_counter
+  645   2D78                    keke:
+  646   2D78   AD 04 03                 LDA collision_object
+  647   2D7B   C9 A8                    CMP #rock_image ; don't get points for eating a flashing mushroom
+  648   2D7D   F0 06                    BEQ ok3
+  649   2D7F   20 8F 30                 JSR increment_score
+  650   2D82   EE 00 03                 INC snake_segment_count
+  651   2D85                    ok3:
+  652                                   ; play the next note in the tune if ready
+  653                           ;       LDA sound_flag
+  654                           ;       BNE ok2
+  655                           ;       LDA #osb_buffer_status
+  656                           ;       LDX #249        ; sound buffer 2
+  657                           ;       LDY #0
+  658                           ;       JSR osbyte
+  659                           ;       CPX #12
+  660                           ;       BMI ok2
+  661                           ;       LDY #0
+  662                           ;       LDA (tune_ptr),Y
+  663                           ;       STA tune_sound
+  664                           ;       INY
+  665                           ;       LDA (tune_ptr),Y
+  666                           ;       STA tune_sound+1
+  667                           ;       LDA #10
+  668                           ;       LDX tune_sound
+  669                           ;       LDY tune_sound+1
+  670                           ;       JSR sound
+  671                           ;       ; add a short pause (electron only)
+  672                           ;       LDA #osw_play_sound
+  673                           ;       LDX #LO(pause_sound)
+  674                           ;       LDY #HI(pause_sound)
+  675                           ;.pause
+  676                           ;       JSR osword
+  677                           ;       CLC
+  678                           ;       LDA tune_ptr
+  679                           ;       ADC #2
+  680                           ;       STA tune_ptr
+  681                           ;       LDA tune_ptr+1
+  682                           ;       ADC #0
+  683                           ;       STA tune_ptr+1
+  684                           ;       LDY #0
+  685                           ;       LDA (tune_ptr),Y
+  686                           ;       BNE ok2
+  687                           ;       LDA #<tune_data
+  688                           ;       STA tune_ptr
+  689                           ;       LDA #>tune_data
+  690                           ;       STA tune_ptr+1
+  691   2D85                    ok2:
+  692                                   ; level ends after eating all the mushrooms
+  693   2D85   AD 00 03                 LDA snake_segment_count
+  694   2D88   C9 19                    CMP #mushroom_count+initial_snake_segment_count
+  695   2D8A   D0 03                    BNE gone
+  696   2D8C   4C 11 2E                 JMP newlev
+  697   2D8F                    gone:
+  698   2D8F   A9 05                    LDA #game_speed
+  699   2D91   F0 0B                    BEQ fl
+  700   2D93   8D 1D 03                 STA counter
+  701   2D96                    gloop:
+  702   2D96   20 66 FE                 JSR oswaitsync
+  703   2D99   CE 1D 03                 DEC counter
+  704   2D9C   D0 F8                    BNE gloop
+  705                                   ; check if snake has just eaten a flashing mushroom
+  706   2D9E                    fl:
+  707   2D9E   AD 18 03                 LDA last_rock_ptr
+  708   2DA1   C5 C0                    CMP snake_head_ptr
+  709   2DA3   D0 1D                    BNE nofl
+  710   2DA5   AD 19 03                 LDA last_rock_ptr+1
+  711   2DA8   C5 C1                    CMP snake_head_ptr+1
+  712   2DAA   D0 16                    BNE nofl
+  713   2DAC   A9 0F                    LDA #<flashing_mushroom_location
+  714   2DAE   8D 18 03                 STA last_rock_ptr
+  715   2DB1   A9 82                    LDA #>flashing_mushroom_location
+  716   2DB3   8D 19 03                 STA last_rock_ptr+1
+  717   2DB6   AD 14 03                 LDA flash_duration
+  718   2DB9   8D 12 03                 STA flash_counter
+  719                           
+  720   2DBC   20 54 3A                 JSR eat_flash_sound1
+  721   2DBF   20 5D 3A                 JSR eat_flash_sound2
+  722                           
+  723   2DC2                    nofl:
+  724   2DC2                    pau:
+  725   2DC2   AD 01 B0                 lda $b001
+  726   2DC5   29 40                    and #$40
+  727   2DC7   D0 19                    BNE nopau
+  728   2DC9   AD 02 03                 LDA pause_flag
+  729   2DCC   D0 14                    BNE nopau
+  730   2DCE   A9 01                    LDA #1
+  731   2DD0   8D 02 03                 STA pause_flag
+  732   2DD3   A0 00                    LDY #0
+  733   2DD5   20 F5 31                 jsr display_pause_on_screen
+  734   2DD8                    pauwa:
+  735   2DD8   20 71 FE                 jsr osrdch
+  736   2DDB   C0 0F                    cpy #$f   ; DELETE 
+  737   2DDD   D0 F9                    BNE pauwa
+  738   2DDF   20 FC 31                 jsr display_pause_off_screen
+  739                           
+  740                           nopau:  ; check to see if flashing mushroom timer has expired
+  741   2DE2   CE 12 03                 DEC flash_counter
+  742   2DE5   AD 12 03                 LDA flash_counter
+  743   2DE8   D0 24                    BNE nopau2
+  744   2DEA   AD 14 03                 LDA flash_duration
+  745   2DED   8D 12 03                 STA flash_counter
+  746   2DF0   AD 18 03                 LDA last_rock_ptr
+  747   2DF3   85 C2                    STA ptr
+  748   2DF5   AD 19 03                 LDA last_rock_ptr+1
+  749   2DF8   85 C3                    STA ptr+1
+  750   2DFA   C9 82                    CMP #>flashing_mushroom_location
+  751   2DFC   F0 03                    BEQ nprock
+  752   2DFE   20 62 2F                 JSR display_rock ; turn flasher back into a rock
+  753   2E01                    nprock:
+  754   2E01   20 0E 2F                 JSR place_rock ; make a new flasher at a random position
+  755   2E04   A5 C2                    LDA ptr
+  756   2E06   8D 18 03                 STA last_rock_ptr
+  757   2E09   A5 C3                    LDA ptr+1
+  758   2E0B   8D 19 03                 STA last_rock_ptr+1
+  759   2E0E                    nopau2:
+  760   2E0E   4C 73 2C                 JMP eachgo
+  761                           
+  762   2E11                    newlev:
+  763                                   ; 1 sec delay
+  764   2E11   A9 32                    LDA #wait_time
+  765   2E13   85 C2                    STA ptr
+  766   2E15                    nl2:
+  767   2E15   20 66 FE                 JSR oswaitsync
+  768   2E18   C6 C2                    DEC ptr
+  769   2E1A   D0 F9                    BNE nl2
+  770                                   ; add 200 bonus points to score
+  771   2E1C   A9 14                    LDA #20
+  772   2E1E   85 C3                    STA ptr+1
+  773   2E20                    nl3:
+  774   2E20   A9 0A                    LDA #10
+  775   2E22   85 C2                    STA ptr
+  776   2E24                    nl4:
+  777   2E24   20 66 FE                 JSR oswaitsync
+  778   2E27   C6 C2                    DEC ptr
+  779   2E29   A5 C2                    LDA ptr
+  780   2E2B   D0 F7                    BNE nl4
+  781                           
+  782   2E2D   20 6F 3A                 JSR end_level_sound
+  783                           
+  784   2E30   20 8F 30                 JSR increment_score
+  785   2E33   C6 C3                    DEC ptr+1
+  786   2E35   A5 C3                    LDA ptr+1
+  787   2E37   D0 E7                    BNE nl3
+  788   2E39   20 4F 32                 JSR clear
+  789                                   ; move to next level + get an extra life
+  790   2E3C   EE 1E 03                 INC current_screen_number
+  791   2E3F   AD 1F 03                 LDA lives_counter
+  792   2E42   C9 0D                    CMP #max_lives_count
+  793   2E44   F0 03                    BEQ gg
+  794   2E46   EE 1F 03                 INC lives_counter
+  795   2E49                    gg:
+  796   2E49   AD 1E 03                 LDA current_screen_number
+  797   2E4C   C9 06                    CMP #max_screen_number+1
+  798   2E4E   30 05                    BMI ggg
+  799   2E50   A9 05                    LDA #max_screen_number
+  800   2E52   8D 1E 03                 STA current_screen_number
+  801   2E55                    ggg:
+  802   2E55   4C A9 2A                 JMP go
+  803                           dead:   ; clear a life marker from the status panel
+  804   2E58   AD 1F 03                 LDA lives_counter
+  805   2E5B   85 C2                    STA ptr
+  806   2E5D   38                       SEC
+  807   2E5E   A9 19                    LDA #<lives_screen_location
+  808   2E60   E5 C2                    SBC ptr
+  809   2E62   85 C2                    STA ptr
+  810   2E64   A9 80                    LDA #>lives_screen_location
+  811   2E66   85 C3                    STA ptr+1
+  812   2E68   20 36 30                 JSR delete_snake_segment
+  813                                   ; play death sound effect
+  814                           
+  815   2E6B   20 66 3A                 JSR die_sound
+  816                           
+  817                                   ; 1 sec delay
+  818   2E6E   A9 32                    LDA #wait_time
+  819   2E70   85 C2                    STA ptr
+  820   2E72                    wawa:
+  821   2E72   20 66 FE                 jsr oswaitsync
+  822   2E75   C6 C2                    DEC ptr
+  823   2E77   A5 C2                    LDA ptr
+  824   2E79   D0 F7                    BNE wawa
+  825                                   ; decrement lives, check if no lives left
+  826   2E7B   CE 1F 03                 DEC lives_counter
+  827   2E7E   AD 1F 03                 LDA lives_counter
+  828   2E81   F0 06                    BEQ dd2
+  829   2E83   20 4F 32                 JSR clear
+  830   2E86   4C A9 2A                 JMP go
+  831   2E89                    dd2:
+  832                                   ; print Game Over message
+  833   2E89   20 03 32                 jsr display_game_over_screen
+  834                           
+  835   2E8C   A9 64                    LDA #wait_time*2
+  836   2E8E   85 C2                    STA ptr
+  837                                   ; update highest screen number reached
+  838   2E90   AD 1E 03                 LDA current_screen_number
+  839   2E93   CD 09 03                 CMP last_screen_number
+  840   2E96   30 03                    BMI wawa3
+  841   2E98   8D 09 03                 STA last_screen_number
+  842                                   ; 1 sec delay
+  843   2E9B                    wawa3:
+  844   2E9B   20 66 FE                 JSR oswaitsync
+  845   2E9E   C6 C2                    DEC ptr
+  846   2EA0   A5 C2                    LDA ptr
+  847   2EA2   D0 F7                    BNE wawa3
+  848   2EA4   20 4F 32                 JSR clear
+  849                                   ; see if score is in high score table
+  850   2EA7   20 F3 30                 JSR check_high_score
+  851   2EAA   90 08                    BCC restart ; if not, just show title screen
+  852   2EAC   20 78 31                 JSR edit_high_score ; else enter name
+  853   2EAF   A9 01                    LDA #1 ; then show the high score screen first
+  854   2EB1   4C 0C 2A                 JMP show_screen
+  855   2EB4                    restart:
+  856   2EB4   4C 0A 2A                 JMP title_screen
+  857                           
+  858                           ;-------------------------------------------------------------
+  859                           find_safe_zone: ; find the safe zone around the snake's head
+  860   2EB7   A0 40                    LDY #$40
+  861                                   ; find the left + right limits of the safe zone
+  862   2EB9   A5 C0                    LDA snake_head_ptr
+  863   2EBB   85 C4                    STA safe_zone_left_ptr
+  864   2EBD   A5 C1                    LDA snake_head_ptr+1
+  865   2EBF   85 C5                    STA safe_zone_left_ptr+1
+  866   2EC1   AD 01 03                 LDA snake_direction
+  867   2EC4   C9 02                    CMP #dir_right  ; if moving right, ignore columns to left of head
+  868   2EC6   F0 11                    BEQ find_right_zone
+  869   2EC8   A2 03                    LDX #safe_zone_size
+  870   2ECA                    left_loop:
+  871   2ECA   C6 C4                    dec safe_zone_left_ptr
+  872   2ECC   B1 C4                    LDA (safe_zone_left_ptr),y
+  873   2ECE   C9 F7                    CMP #wall_image
+  874   2ED0   D0 04                    BNE next_left
+  875   2ED2   E6 C4                    inc safe_zone_left_ptr  ; hit the wall
+  876   2ED4   D0 03                    BNE find_right_zone
+  877   2ED6                    next_left:
+  878   2ED6   CA                       DEX
+  879   2ED7   D0 F1                    BNE left_loop
+  880   2ED9                    find_right_zone:
+  881   2ED9   A5 C0                    LDA snake_head_ptr
+  882   2EDB   85 C6                    STA safe_zone_right_ptr
+  883   2EDD   A5 C1                    LDA snake_head_ptr+1
+  884   2EDF   85 C7                    STA safe_zone_right_ptr+1
+  885   2EE1   AD 01 03                 LDA snake_direction
+  886   2EE4   C9 01                    CMP #dir_left   ; if moving left, ignore columns to right of head
+  887   2EE6   D0 04                    BNE right1
+  888   2EE8   A2 01                    LDX #1
+  889   2EEA   D0 02                    BNE right_loop
+  890   2EEC                    right1:
+  891   2EEC   A2 04                    LDX #safe_zone_size+1   ; +1 because the snake head occupies the first slot
+  892   2EEE                    right_loop
+  893   2EEE   E6 C6                    inc safe_zone_right_ptr
+  894   2EF0   B1 C6                    LDA (safe_zone_right_ptr),y
+  895   2EF2   C9 F7                    CMP #wall_image
+  896   2EF4   F0 03                    BEQ find_top_zone
+  897   2EF6   CA                       DEX
+  898   2EF7   D0 F5                    BNE right_loop
+  899   2EF9                    find_top_zone:
+  900                                   ; move the pointers to the top of the safe zone
+  901   2EF9   AD 01 03                 LDA snake_direction
+  902   2EFC   C9 04                    CMP #dir_down   ; if moving down, ignore rows above head
+  903   2EFE   F0 0D                    BEQ done
+  904   2F00   38                       sec
+  905   2F01   A5 C5                    lda safe_zone_left_ptr+1
+  906   2F03   E9 03                    sbc #safe_zone_size
+  907   2F05   85 C5                    sta safe_zone_left_ptr+1
+  908   2F07   A5 C7                    lda safe_zone_right_ptr+1
+  909   2F09   E9 03                    sbc #safe_zone_size
+  910   2F0B   85 C7                    sta safe_zone_right_ptr+1
+  911   2F0D                    done:
+  912   2F0D   60                       RTS
+  913                           
+  914                           ;-------------------------------------------------------------
+  915                           place_rock:     ; place a rock at a random screen location
+  916   2F0E   8E 1D 03                 STX counter
+  917   2F11   20 B7 2E                 JSR find_safe_zone
+  918                           again:  ; make a pointer to a random position on the screen
+  919   2F14   20 B1 2F                 JSR get_random_position
+  920   2F17   A0 40                    LDY #$40 ; don't place the rock if something is already there
+  921   2F19   B1 C2                    LDA (ptr),Y
+  922   2F1B   D0 F7                    BNE again
+  923                                   ; don't place the rock in the safe zone around the snake's head
+  924   2F1D   A5 C4                    LDA safe_zone_left_ptr
+  925   2F1F   8D 42 02                 STA store0
+  926   2F22   A5 C5                    LDA safe_zone_left_ptr+1
+  927   2F24   8D 43 02                 STA store1
+  928   2F27   A5 C6                    LDA safe_zone_right_ptr
+  929   2F29   8D 44 02                 STA store2
+  930   2F2C   A5 C7                    LDA safe_zone_right_ptr+1
+  931   2F2E   8D 45 02                 STA store3
+  932   2F31   AD 01 03                 LDA snake_direction
+  933   2F34   C9 03                    CMP #dir_up     ; if moving up/down, can ignore the other half of the rows
+  934   2F36   90 04                    BCC start
+  935   2F38   A2 04                    LDX #safe_zone_size+1
+  936   2F3A   D0 02                    BNE loop5
+  937   2F3C                    start:
+  938   2F3C   A2 07                    LDX #safe_zone_size*2+1
+  939                           loop5:  ; if rock before left of zone, that's ok
+  940   2F3E   A5 C2                    LDA ptr
+  941   2F40   CD 42 02                 CMP store0
+  942   2F43   A5 C3                    LDA ptr+1
+  943   2F45   ED 43 02                 SBC store1
+  944   2F48   90 15                    BCC ok
+  945                                   ; if rock inside safe zone, try again
+  946   2F4A   A5 C2                    LDA ptr
+  947   2F4C   CD 44 02                 CMP store2
+  948   2F4F   A5 C3                    LDA ptr+1
+  949   2F51   ED 45 02                 SBC store3
+  950   2F54   90 BE                    BCC again
+  951                                   ; otherwise, try the next line in the safe zone
+  952   2F56   EE 43 02                 inc store1
+  953   2F59   EE 45 02                 inc store3
+  954   2F5C   CA                       DEX
+  955   2F5D   D0 DF                    BNE loop5
+  956                                   ; if rock not in safe zone, it's ok to place it
+  957   2F5F                    ok:
+  958   2F5F   AE 1D 03                 LDX counter
+  959   2F62                    display_rock:
+  960   2F62   8E 40 02                 stx x_tmp
+  961   2F65   8C 41 02                 sty y_tmp
+  962   2F68   A2 00                    LDX #0
+  963   2F6A                    loop6:
+  964   2F6A   BD 70 39                 LDA rock_sprite_data,x
+  965   2F6D   BC F5 2F                 ldy scr_ptr,x
+  966   2F70   91 C2                    STA (ptr),Y
+  967   2F72   E8                       INx
+  968   2F73   E0 08                    CPx #bytes_per_character
+  969   2F75   D0 F3                    BNE loop6
+  970   2F77   AE 40 02                 ldx x_tmp
+  971   2F7A   AC 41 02                 ldy y_tmp
+  972   2F7D   60                       RTS
+  973                           ;-------------------------------------------------------------
+  974   2F7E                    move_snake_forwards:
+  975   2F7E   AD 00 03                 LDA snake_segment_count
+  976   2F81   18                       CLC
+  977   2F82   0A                       ASL A
+  978   2F83   A8                       TAY
+  979   2F84                    loop8:
+  980   2F84   B9 FE 38                 LDA snake_segment_pointers-2,Y
+  981   2F87   99 00 39                 STA snake_segment_pointers,Y
+  982   2F8A   B9 FF 38                 LDA snake_segment_pointers-1,Y
+  983   2F8D   99 01 39                 STA snake_segment_pointers+1,Y
+  984   2F90   88                       DEY
+  985   2F91   88                       DEY
+  986   2F92   D0 F0                    BNE loop8
+  987   2F94   60                       RTS
+  988                           
+  989                           ;-------------------------------------------------------------
+  990   2F95                    display_mushroom:
+  991   2F95   8E 40 02                 stx x_tmp
+  992   2F98   8C 41 02                 sty y_tmp
+  993   2F9B   A2 00                    LDX #0
+  994   2F9D                    loop4:
+  995   2F9D   BC F5 2F                 ldy scr_ptr,x
+  996   2FA0   BD 90 39                 LDA mushroom_sprite_data,x
+  997   2FA3   91 C2                    STA (ptr),Y
+  998   2FA5   E8                       INX
+  999   2FA6   E0 08                    CPX #bytes_per_character
+ 1000   2FA8   D0 F3                    BNE loop4
+ 1001   2FAA   AE 40 02                 ldx x_tmp
+ 1002   2FAD   AC 41 02                 ldy y_tmp
+ 1003   2FB0   60                       RTS
+ 1004                           
+ 1005                           ;-------------------------------------------------------------
+ 1006   2FB1                    get_random_position:
+ 1007   2FB1   8E 40 02                 stx x_tmp
+ 1008   2FB4   8C 41 02                 sty y_tmp
+ 1009   2FB7   20 86 C9                 jsr osrnd
+ 1010   2FBA   A5 08                    lda $8
+ 1011   2FBC   29 1F                    AND #$1F
+ 1012   2FBE   85 C2                    STA ptr
+ 1013   2FC0   A5 09                    LDA $9
+ 1014   2FC2                    rndloop:
+ 1015   2FC2   20 86 C9                 jsr osrnd
+ 1016   2FC5   A5 09                    lda $9
+ 1017   2FC7   29 1F                    AND #$1f
+ 1018   2FC9   C9 13                    cmp #19
+ 1019   2FCB   B0 F5                    bcs rndloop
+ 1020   2FCD   18                       clc
+ 1021   2FCE   69 84                    adc #$84
+ 1022   2FD0   85 C3                    STA ptr+1
+ 1023   2FD2   A9 00                    lda #0
+ 1024   2FD4   85 04                    sta $4
+ 1025   2FD6   AE 40 02                 ldx x_tmp
+ 1026   2FD9   AC 41 02                 ldy y_tmp
+ 1027   2FDC   60                       RTS
+ 1028                           
+ 1029                           ;-------------------------------------------------------------
+ 1030   2FDD                    seed_random:        
+ 1031   2FDD   20 86 C9                 jsr osrnd
+ 1032   2FE0   A5 08                    LDA $8
+ 1033   2FE2   8D 5C 32                 STA random_bits
+ 1034   2FE5   A5 09                    LDA $9
+ 1035   2FE7   8D 5D 32                 STA random_bits+1
+ 1036   2FEA   A5 0A                    LDA $a
+ 1037   2FEC   8D 5E 32                 STA random_bits+2
+ 1038   2FEF   A5 0B                    LDA $b
+ 1039   2FF1   8D 5F 32                 STA random_bits+3
+ 1040   2FF4   60                       RTS
+ 1041                           
+ 1042   2FF5   00 20 40 60 80   scr_ptr  .db 0,$20,$40,$60,$80,$a0,$c0,$e0
+        2FFA   A0 C0 E0 
+ 1043                           
+ 1044                           ;-------------------------------------------------------------
+ 1045                           ;SUBROUTINES
+ 1046                           ;-------------------------------------------------------------
+ 1047                           
+ 1048   2FFD                    draw_snake_head:
+ 1049   2FFD   8E 40 02                 stx x_tmp
+ 1050   3000   8C 41 02                 sty y_tmp
+ 1051                           
+ 1052   3003   A2 00                    LDX #0
+ 1053   3005                    loop:
+ 1054   3005   8A                       txa
+ 1055   3006   A8                       tay
+ 1056   3007   B1 C2                    LDA (ptr),y
+ 1057   3009   BC F5 2F                 LDY scr_ptr,x
+ 1058   300C   91 C0                    STA (snake_head_ptr),Y
+ 1059   300E   E8                       INX
+ 1060   300F   E0 08                    CPX #bytes_per_character
+ 1061   3011   D0 F2                    BNE loop
+ 1062                           
+ 1063   3013   AE 40 02                 ldx x_tmp
+ 1064   3016   AC 41 02                 ldy y_tmp
+ 1065   3019   60                       RTS
+ 1066                           
+ 1067                           ;---------------------------------------------------------------
+ 1068   301A                    draw_snake_segment:
+ 1069   301A   8E 40 02                 stx x_tmp
+ 1070   301D   8C 41 02                 sty y_tmp
+ 1071                           
+ 1072   3020   A2 00                    LDX #0
+ 1073   3022                    loop2:
+ 1074   3022   BC F5 2F                 LDY scr_ptr,x
+ 1075   3025   BD B0 39                 LDA snake_body_sprite_data,x
+ 1076   3028   91 C2                    STA (ptr),Y
+ 1077   302A   E8                       INX
+ 1078   302B   E0 08                    CPX #bytes_per_character
+ 1079   302D   D0 F3                    BNE loop2
+ 1080                           
+ 1081   302F   AE 40 02                 ldx x_tmp
+ 1082   3032   AC 41 02                 ldy y_tmp
+ 1083   3035   60                       RTS
+ 1084                           
+ 1085                           ;---------------------------------------------------------------
+ 1086   3036                    delete_snake_segment:
+ 1087   3036   8E 40 02                 stx x_tmp
+ 1088   3039   8C 41 02                 sty y_tmp
+ 1089                           
+ 1090   303C   A2 00                    LDX #0
+ 1091   303E                    loop7:
+ 1092   303E   A9 00                    LDA #0
+ 1093   3040   BC F5 2F                 ldy scr_ptr,x
+ 1094   3043   91 C2                    STA (ptr),Y
+ 1095   3045   E8                       INX
+ 1096   3046   E0 08                    CPX #bytes_per_character
+ 1097   3048   D0 F4                    BNE loop7
+ 1098                           
+ 1099   304A   AE 40 02                 ldx x_tmp
+ 1100   304D   AC 41 02                 ldy y_tmp
+ 1101   3050   60                       RTS
+ 1102                           
+ 1103                           ;---------------------------------------------------------------
+ 1104   3051                    draw_horizontal_wall:
+ 1105   3051   AD 1D 03                 lda counter
+ 1106   3054   48                       pha
+ 1107   3055                    loop11:
+ 1108   3055   A2 00                    LDX #0
+ 1109   3057                    loop12:
+ 1110   3057   BC F5 2F                 LDY scr_ptr,x
+ 1111   305A   BD A0 39                 LDA brick_wall_sprite_data,x
+ 1112   305D   91 C2                    STA (ptr),Y
+ 1113   305F   E8                       INX
+ 1114   3060   E0 08                    CPX #bytes_per_character
+ 1115   3062   D0 F3                    BNE loop12
+ 1116   3064   E6 C2                    inc ptr
+ 1117   3066   CE 1D 03                 DEC counter
+ 1118   3069   D0 EA                    BNE loop11
+ 1119   306B   68                       pla
+ 1120   306C   8D 1D 03                 sta counter
+ 1121   306F   60                       RTS
+ 1122                           
+ 1123                           ;---------------------------------------------------------------
+ 1124   3070                    draw_vertical_wall:
+ 1125   3070   AD 1D 03                 lda counter
+ 1126   3073   48                       pha
+ 1127   3074                    loop21:
+ 1128   3074   A2 00                    LDX #0
+ 1129   3076                    loop22:
+ 1130   3076   BC F5 2F                 LDY scr_ptr,x
+ 1131   3079   BD A0 39                 LDA brick_wall_sprite_data,x
+ 1132   307C   91 C2                    STA (ptr),Y
+ 1133   307E   E8                       INX
+ 1134   307F   E0 08                    CPX #bytes_per_character
+ 1135   3081   D0 F3                    BNE loop22
+ 1136   3083   E6 C3                    INC ptr+1
+ 1137   3085   CE 1D 03                 DEC counter
+ 1138   3088   D0 EA                    BNE loop21
+ 1139   308A   68                       pla
+ 1140   308B   8D 1D 03                 sta counter
+ 1141   308E   60                       RTS
+ 1142                           
+ 1143                           ;---------------------------------------------------------------
+ 1144   308F                    increment_score:
+ 1145   308F   18                       CLC
+ 1146   3090   AD 83 39                 LDA score+3
+ 1147   3093   69 01                    ADC #1
+ 1148   3095   8D 83 39                 STA score+3
+ 1149   3098   C9 0A                    CMP #10
+ 1150   309A   30 32                    BMI display_score
+ 1151   309C   A9 00                    LDA #0
+ 1152   309E   8D 83 39                 STA score+3
+ 1153   30A1   18                       CLC
+ 1154   30A2   AD 82 39                 LDA score+2
+ 1155   30A5   69 01                    ADC #1
+ 1156   30A7   8D 82 39                 STA score+2
+ 1157   30AA   C9 0A                    CMP #10
+ 1158   30AC   30 20                    BMI display_score
+ 1159   30AE   A9 00                    LDA #0
+ 1160   30B0   8D 82 39                 STA score+2
+ 1161   30B3   18                       CLC
+ 1162   30B4   AD 81 39                 LDA score+1
+ 1163   30B7   69 01                    ADC #1
+ 1164   30B9   8D 81 39                 STA score+1
+ 1165   30BC   C9 0A                    CMP #10
+ 1166   30BE   30 0E                    BMI display_score
+ 1167   30C0   18                       CLC
+ 1168   30C1   A9 00                    LDA #0
+ 1169   30C3   8D 81 39                 STA score+1
+ 1170   30C6   AD 80 39                 LDA score
+ 1171   30C9   69 01                    ADC #1
+ 1172   30CB   8D 80 39                 STA score
+ 1173   30CE                    display_score:
+ 1174   30CE   18                       clc
+ 1175   30CF   AD 80 39                 lda score
+ 1176   30D2   69 30                    adc #$30
+ 1177   30D4   8D 17 33                 sta score_set+2
+ 1178   30D7   AD 81 39                 lda score+1
+ 1179   30DA   69 30                    adc #$30
+ 1180   30DC   8D 18 33                 sta score_set+3
+ 1181   30DF   AD 82 39                 lda score+2
+ 1182   30E2   69 30                    adc #$30
+ 1183   30E4   8D 19 33                 sta score_set+4
+ 1184   30E7   AD 83 39                 lda score+3
+ 1185   30EA   69 30                    adc #$30
+ 1186   30EC   8D 1A 33                 sta score_set+5
+ 1187   30EF   20 EE 31                 jsr display_score_screen
+ 1188   30F2   60                       RTS
+ 1189                           
+ 1190                           ;---------------------------------------------------------------
+ 1191   30F3                    check_high_score:
+ 1192                           ; on exit: carry set if new high score, &75 = entry position (0-9), &77/&78 = ptr to entry
+ 1193   30F3   A9 4E                    LDA #<(hs1+2)
+ 1194   30F5   85 C8                    STA high_score_entry_ptr
+ 1195   30F7   A9 33                    LDA #>(hs1+2)
+ 1196   30F9   85 C9                    STA high_score_entry_ptr+1
+ 1197                           
+ 1198                               ; Check score with scoretable entries
+ 1199   30FB   A2 0A                    LDX #10
+ 1200   30FD                    loop38:
+ 1201   30FD   A0 00                    LDY #0
+ 1202   30FF                    loop39:
+ 1203   30FF   B9 80 39                 LDA score,Y
+ 1204   3102   09 30                    ORA #'0'
+ 1205   3104   D1 C8                    CMP (high_score_entry_ptr),Y
+ 1206   3106   90 07                    BCC next
+ 1207   3108   D0 16                    BNE found
+ 1208   310A   C8                       INY
+ 1209   310B   C0 04                    CPY #4
+ 1210   310D   90 F0                    BCC loop39
+ 1211   310F                    next:
+ 1212   310F   18                       CLC
+ 1213   3110   A5 C8                    LDA high_score_entry_ptr
+ 1214   3112   69 13                    ADC #(hs2-hs1)
+ 1215   3114   85 C8                    STA high_score_entry_ptr
+ 1216   3116   90 02                    BCC *+4
+ 1217   3118   E6 C9                    INC high_score_entry_ptr+1
+ 1218   311A   CA                       DEX
+ 1219   311B   D0 E0                    BNE loop38
+ 1220   311D   18                       CLC
+ 1221   311E   90 57                    BCC done1
+ 1222   3120                    found:
+ 1223                               ; Move remaining entries down
+ 1224   3120   CA                       DEX
+ 1225   3121   8E 42 02                 STX store0
+ 1226   3124   F0 2F                    BEQ clr
+ 1227   3126   A9 E4                    LDA #<hs9
+ 1228   3128   85 CA                    STA high_score_copy_ptr
+ 1229   312A   A9 33                    LDA #>hs9
+ 1230   312C   85 CB                    STA high_score_copy_ptr+1
+ 1231   312E   A9 F7                    LDA #<hs10
+ 1232   3130   85 C8                    STA high_score_entry_ptr
+ 1233   3132   A9 33                    LDA #>hs10
+ 1234   3134   85 C9                    STA high_score_entry_ptr+1
+ 1235   3136                    cplp1:
+ 1236   3136   A0 11                    LDY #17
+ 1237   3138                    cplp2:
+ 1238   3138   B1 CA                    LDA (high_score_copy_ptr),Y
+ 1239   313A   91 C8                    STA (high_score_entry_ptr),Y
+ 1240   313C   88                       DEY
+ 1241   313D   C0 02                    cpy #2
+ 1242   313F   D0 F7                    BNE cplp2
+ 1243   3141   A5 CA                    LDA high_score_copy_ptr
+ 1244   3143   85 C8                    STA high_score_entry_ptr
+ 1245   3145   38                       SEC
+ 1246   3146   E9 13                    SBC #(hs2-hs1)
+ 1247   3148   85 CA                    STA high_score_copy_ptr
+ 1248   314A   A5 CB                    LDA high_score_copy_ptr+1
+ 1249   314C   85 C9                    STA high_score_entry_ptr+1
+ 1250   314E   E9 00                    SBC #0
+ 1251   3150   85 CB                    STA high_score_copy_ptr+1
+ 1252   3152   CA                       DEX
+ 1253   3153   D0 E1                    BNE cplp1
+ 1254   3155                    clr:
+ 1255                               ; Make a new entry
+ 1256   3155   A9 09                    LDA #9
+ 1257   3157   38                       SEC
+ 1258   3158   ED 42 02                 SBC store0
+ 1259   315B   8D 17 03                 STA high_score_entry_pos
+ 1260   315E   A0 05                    LDY #5
+ 1261   3160                    cloop:
+ 1262   3160   B9 7E 39                 LDA score-2,Y
+ 1263   3163   09 30                    ORA #'0'
+ 1264   3165   91 C8                    STA (high_score_entry_ptr),Y
+ 1265   3167   88                       DEY
+ 1266   3168   C0 02                    cpy #2
+ 1267   316A   D0 F4                    bne cloop
+ 1268   316C   A9 20                    LDA #' '
+ 1269   316E   A0 0A                    LDY #10
+ 1270   3170                    cloop2:
+ 1271   3170   91 C8                    STA (high_score_entry_ptr),Y
+ 1272   3172   C8                       INY
+ 1273   3173   C0 12                    CPY #18
+ 1274   3175   90 F9                    BCC cloop2
+ 1275                                   ; carry already set by above
+ 1276   3177                    done1:
+ 1277   3177   60                       RTS
+ 1278                           
+ 1279                           ;---------------------------------------------------------------
+ 1280   3178                    edit_high_score:
+ 1281   3178   20 0A 32                 JSR display_high_scores
+ 1282   317B   20 2C 32                 JSR display_congratulations
+ 1283                           
+ 1284   317E   A9 00                    LDA #0
+ 1285   3180   8D 16 03                 STA high_score_crsr_pos
+ 1286   3183   A5 C8                    LDA high_score_entry_ptr
+ 1287   3185   18                       CLC
+ 1288   3186   69 0A                    ADC #10
+ 1289   3188   85 C8                    STA high_score_entry_ptr
+ 1290   318A   90 02                    BCC *+4
+ 1291   318C   E6 C9                    INC high_score_entry_ptr+1
+ 1292                           
+ 1293   318E                    key:
+ 1294   318E   20 94 FE                 jsr osrdkey
+ 1295   3191   C9 0D                    CMP #13  ; return key
+ 1296   3193   F0 4E                    BEQ done3
+ 1297   3195   C9 7F                    CMP #$7f  ; delete key
+ 1298   3197   D0 1F                    BNE notback
+ 1299                                   ; delete last character
+ 1300   3199   AC 16 03                 LDY high_score_crsr_pos
+ 1301   319C   F0 F0                    BEQ key
+ 1302   319E   CE 16 03                 DEC high_score_crsr_pos
+ 1303   31A1   AD 16 03                 lda high_score_crsr_pos
+ 1304   31A4   18                       clc
+ 1305   31A5   69 0C                    adc #12
+ 1306   31A7   AA                       tax
+ 1307   31A8   A0 15                    ldy #21
+ 1308   31AA   A9 20                    lda #32
+ 1309   31AC   20 6C 38                 jsr PUTCHAR
+ 1310   31AF   A9 20                    lda #32
+ 1311   31B1   AC 16 03                 ldy high_score_crsr_pos
+ 1312   31B4   91 C8                    STA (high_score_entry_ptr),Y
+ 1313   31B6   D0 D6                    bne key
+ 1314   31B8                    notback:
+ 1315   31B8   AE 16 03                 ldx high_score_crsr_pos
+ 1316   31BB   E0 08                    cpx #8
+ 1317   31BD   F0 CF                    beq key
+ 1318   31BF   C9 41                    CMP #$41   ;A
+ 1319   31C1   90 CB                    BCC key
+ 1320   31C3   C0 5A                    CPY #$5A   ;Z
+ 1321   31C5   B0 C7                    BCS key
+ 1322   31C7   AC 16 03                 LDY high_score_crsr_pos
+ 1323   31CA   C0 0A                    CPY #10
+ 1324   31CC   B0 C0                    BCS key
+ 1325   31CE   91 C8                    STA (high_score_entry_ptr),Y
+ 1326   31D0   48                       pha
+ 1327   31D1   AD 16 03                 lda high_score_crsr_pos
+ 1328   31D4   18                       clc
+ 1329   31D5   69 0C                    adc #12
+ 1330   31D7   AA                       tax
+ 1331   31D8   A0 15                    ldy #21
+ 1332   31DA   68                       pla
+ 1333   31DB   20 6C 38                 jsr PUTCHAR
+ 1334                           ;       lda high_score_crsr_pos
+ 1335                           ;       cmp #7
+ 1336                           ;       beq key
+ 1337   31DE   EE 16 03                 INC high_score_crsr_pos
+ 1338   31E1   D0 AB                    BNE key
+ 1339   31E3                    done3:
+ 1340   31E3   60                       RTS
+ 1341                           
+ 1342                           ;---------------------------------------------------------------
+ 1343                           ; Display title screen
+ 1344                           ;---------------------------------------------------------------
+ 1345                           
+ 1346   31E4                    display_title_screen:
+ 1347   31E4   20 33 32                 jsr clear4
+ 1348   31E7   A2 60                    ldx #<title_screen_text
+ 1349   31E9   A0 32                    ldy #>title_screen_text
+ 1350   31EB   4C 21 38                 jmp PUTSTRING
+ 1351                           
+ 1352                           ;---------------------------------------------------------------
+ 1353                           ; Display score
+ 1354                           ;---------------------------------------------------------------
+ 1355                           
+ 1356   31EE                    display_score_screen:
+ 1357   31EE   A2 15                    ldx #<score_set
+ 1358   31F0   A0 33                    ldy #>score_set
+ 1359   31F2   4C 21 38                 jmp PUTSTRING
+ 1360                           
+ 1361                           ;---------------------------------------------------------------
+ 1362                           ; Display Pause on screen
+ 1363                           ;---------------------------------------------------------------
+ 1364                           
+ 1365   31F5                    display_pause_on_screen:
+ 1366   31F5   A2 BE                    ldx #<pause_on_text
+ 1367   31F7   A0 34                    ldy #>pause_on_text
+ 1368   31F9   4C 21 38                 jmp PUTSTRING
+ 1369                           
+ 1370                           ;---------------------------------------------------------------
+ 1371                           ; Display Pause off screen
+ 1372                           ;---------------------------------------------------------------
+ 1373                           
+ 1374   31FC                    display_pause_off_screen:
+ 1375   31FC   A2 DE                    ldx #<pause_off_text
+ 1376   31FE   A0 34                    ldy #>pause_off_text
+ 1377   3200   4C 21 38                 jmp PUTSTRING
+ 1378                           
+ 1379                           ;---------------------------------------------------------------
+ 1380                           ; Display Game over
+ 1381                           ;---------------------------------------------------------------
+ 1382                           
+ 1383   3203                    display_game_over_screen:
+ 1384   3203   A2 FE                    ldx #<game_over_text
+ 1385   3205   A0 34                    ldy #>game_over_text
+ 1386   3207   4C 21 38                 jmp PUTSTRING
+ 1387                           
+ 1388                           ;---------------------------------------------------------------
+ 1389                           ; Display high scores
+ 1390                           ;---------------------------------------------------------------
+ 1391                           
+ 1392   320A                    display_high_scores:
+ 1393   320A   20 33 32                 jsr clear4
+ 1394   320D   A2 35                    ldx #<high_score_text
+ 1395   320F   A0 33                    ldy #>high_score_text
+ 1396   3211   4C 21 38                 jmp PUTSTRING
+ 1397                           
+ 1398                           ;---------------------------------------------------------------
+ 1399                           ; Display Press space
+ 1400                           ;---------------------------------------------------------------
+ 1401                           
+ 1402   3214                    display_press_space:
+ 1403   3214   A2 1E                    ldx #<press_space_text
+ 1404   3216   A0 33                    ldy #>press_space_text
+ 1405   3218   4C 21 38                 jmp PUTSTRING
+ 1406                           
+ 1407                           ;---------------------------------------------------------------
+ 1408                           ; Display Which screen
+ 1409                           ;---------------------------------------------------------------
+ 1410                           
+ 1411   321B                    display_which_screen:
+ 1412   321B   A2 71                    ldx #<which_screen_text
+ 1413   321D   A0 34                    ldy #>which_screen_text
+ 1414   321F   4C 21 38                 jmp PUTSTRING
+ 1415                           
+ 1416                           ;---------------------------------------------------------------
+ 1417                           ; Display status panel
+ 1418                           ;---------------------------------------------------------------
+ 1419                           
+ 1420   3222                    display_status_panel:
+ 1421   3222   20 33 32                 jsr clear4
+ 1422   3225   A2 4A                    ldx #<status_panel_text
+ 1423   3227   A0 34                    ldy #>status_panel_text
+ 1424   3229   4C 21 38                 jmp PUTSTRING
+ 1425                           
+ 1426                           ;---------------------------------------------------------------
+ 1427                           ; Display Congratulations text
+ 1428                           ;---------------------------------------------------------------
+ 1429                           
+ 1430   322C                    display_congratulations:
+ 1431   322C   A2 0B                    ldx #<congratulations_text
+ 1432   322E   A0 34                    ldy #>congratulations_text
+ 1433   3230   4C 21 38                 jmp PUTSTRING
+ 1434                           
+ 1435                           
+ 1436                           ;---------------------------------------------------------------
+ 1437                           ; Clear screen 4
+ 1438                           ;---------------------------------------------------------------
+ 1439                           
+ 1440          0070             scr_adr  equ tmp
+ 1441                           
+ 1442   3233                    clear4:  
+ 1443   3233   A9 D0                    lda #$D0        ; Clear4 color
+ 1444   3235   8D 00 B0                 sta $b000
+ 1445                           
+ 1446   3238   A9 80                    lda #$80
+ 1447   323A   85 71                    sta scr_adr+1
+ 1448   323C   A9 00                    lda #0
+ 1449   323E   85 70                    sta scr_adr
+ 1450   3240   A8                       tay
+ 1451   3241                    clrloop:
+ 1452   3241   91 70                    sta (scr_adr),y  ; Clear byte
+ 1453   3243   C8                       iny
+ 1454   3244   D0 FB                    bne clrloop
+ 1455   3246   E6 71                    inc scr_adr+1
+ 1456   3248   A6 71                    ldx scr_adr+1
+ 1457   324A   E0 98                    cpx #$98
+ 1458   324C   D0 F3                    bne clrloop
+ 1459   324E   60                       rts
+ 1460                           
+ 1461                           ;---------------------------------------------------------------
+ 1462                           ; Clear playfield
+ 1463                           ;---------------------------------------------------------------
+ 1464   324F                    clear:
+ 1465   324F   A9 84                    lda #$84
+ 1466   3251   85 71                    sta scr_adr+1
+ 1467   3253   A9 00                    lda #0
+ 1468   3255   85 70                    sta scr_adr
+ 1469   3257   A8                       tay
+ 1470   3258   4C 41 32                 jmp clrloop
+ 1471                           
+ 1472                           ;---------------------------------------------------------------
+ 1473                           ; Variables
+ 1474                           ;---------------------------------------------------------------
+ 1475                           
+ 1476   325B   14               screen_duration .db 20   ; 10 sec
+ 1477   325C   FFFF FFFF        random_bits     .dw $ffff,$ffff
+ 1478                           
+ 1479                           ;---------------------------------------------------------------
+ 1480                           ; Data
+ 1481                           ;---------------------------------------------------------------
+ 1482                           
+ 1483   3260                    title_screen_text:
+ 1484   3260   C6 01 2A 2A 2A           .db red+6, 1,'*** HYPER VIPER ***',0
+        3265   20 48 59 50 45 
+        326A   52 20 56 49 50 
+        326F   45 52 20 2A 2A 
+        3274   2A 00 
+ 1485   3276   82 03 42 42 43           .db blue+2, 3,'BBC VERSION BY KENTON PRICE',0
+        327B   20 56 45 52 53 
+        3280   49 4F 4E 20 42 
+        3285   59 20 4B 45 4E 
+        328A   54 4F 4E 20 50 
+        328F   52 49 43 45 00 
+ 1486   3294   42 04 41 54 4F           .db yellow+2, 4,'ATOM VERSION BY KEES VAN OSS',0
+        3299   4D 20 56 45 52 
+        329E   53 49 4F 4E 20 
+        32A3   42 59 20 4B 45 
+        32A8   45 53 20 56 41 
+        32AD   4E 20 4F 53 53 
+        32B2   00 
+ 1487   32B3   CE 06 2D 2D 2D           .db red+14, 6,'----',0
+        32B8   2D 00 
+ 1488   32BA   CE 07 4B 45 59           .db red+14, 7,'KEYS',0
+        32BF   53 00 
+ 1489   32C1   CE 08 2D 2D 2D           .db red+14, 8,'----',0
+        32C6   2D 00 
+ 1490   32C8   CB 0A 5A 20 2E           .db red+11,10,'Z ... LEFT',0
+        32CD   2E 2E 20 4C 45 
+        32D2   46 54 00 
+ 1491   32D5   CB 0B 58 20 2E           .db red+11,11,'X ... RIGHT',0
+        32DA   2E 2E 20 52 49 
+        32DF   47 48 54 00 
+ 1492   32E3   CB 0C 3B 20 2E           .db red+11,12,'; ... UP',0
+        32E8   2E 2E 20 55 50 
+        32ED   00 
+ 1493   32EE   CB 0D 2E 20 2E           .db red+11,13,'. ... DOWN',0
+        32F3   2E 2E 20 44 4F 
+        32F8   57 4E 00 
+ 1494   32FB   C5 0F 43 4F 4E           .db red+5,15,'CONTROL ... GAME PAUSE',0
+        3300   54 52 4F 4C 20 
+        3305   2E 2E 2E 20 47 
+        330A   41 4D 45 20 50 
+        330F   41 55 53 45 00 
+ 1495   3314   FF                       .db $ff
+ 1496                           
+ 1497   3315                    score_set:
+ 1498   3315   46 00 30 30 30           .db yellow+6, 0,'00000',0
+        331A   30 30 00 
+ 1499   331D   FF                       .db $ff
+ 1500                           
+ 1501   331E                    press_space_text:
+ 1502   331E   86 16 50 52 45           .db blue+6,22,'PRESS SPACE TO PLAY',0
+        3323   53 53 20 53 50 
+        3328   41 43 45 20 54 
+        332D   4F 20 50 4C 41 
+        3332   59 00 
+ 1503   3334   FF                       .db $ff
+ 1504                           
+ 1505   3335                    high_score_text:
+ 1506   3335   86 01 2A 2A 2A           .db blue+6, 1,'*** HYPER VIPERS ***',0
+        333A   20 48 59 50 45 
+        333F   52 20 56 49 50 
+        3344   45 52 53 20 2A 
+        3349   2A 2A 00 
+ 1507   334C   C8 05 30 30 31   hs1     .db red+8, 5,'00100   RETRO...',0
+        3351   30 30 20 20 20 
+        3356   52 45 54 52 4F 
+        335B   2E 2E 2E 00 
+ 1508   335F   48 06 30 30 31   hs2     .db yellow+8, 6,'00100   SOFTWARE',0
+        3364   30 30 20 20 20 
+        3369   53 4F 46 54 57 
+        336E   41 52 45 00 
+ 1509   3372   88 07 30 30 31           .db blue+8, 7,'00100   RETRO...',0
+        3377   30 30 20 20 20 
+        337C   52 45 54 52 4F 
+        3381   2E 2E 2E 00 
+ 1510   3385   C8 08 30 30 31           .db red+8, 8,'00100   SOFTWARE',0
+        338A   30 30 20 20 20 
+        338F   53 4F 46 54 57 
+        3394   41 52 45 00 
+ 1511   3398   48 09 30 30 31           .db yellow+8, 9,'00100   RETRO...',0
+        339D   30 30 20 20 20 
+        33A2   52 45 54 52 4F 
+        33A7   2E 2E 2E 00 
+ 1512   33AB   88 0A 30 30 31           .db blue+8,10,'00100   SOFTWARE',0
+        33B0   30 30 20 20 20 
+        33B5   53 4F 46 54 57 
+        33BA   41 52 45 00 
+ 1513   33BE   C8 0B 30 30 31           .db red+8,11,'00100   RETRO...',0
+        33C3   30 30 20 20 20 
+        33C8   52 45 54 52 4F 
+        33CD   2E 2E 2E 00 
+ 1514   33D1   48 0C 30 30 31           .db yellow+8,12,'00100   SOFTWARE',0
+        33D6   30 30 20 20 20 
+        33DB   53 4F 46 54 57 
+        33E0   41 52 45 00 
+ 1515   33E4   88 0D 30 30 31   hs9     .db blue+8,13,'00100   RETRO...',0
+        33E9   30 30 20 20 20 
+        33EE   52 45 54 52 4F 
+        33F3   2E 2E 2E 00 
+ 1516   33F7   C8 0E 30 30 31   hs10    .db red+8,14,'00100   SOFTWARE',0
+        33FC   30 30 20 20 20 
+        3401   53 4F 46 54 57 
+        3406   41 52 45 00 
+ 1517   340A   FF                       .db $ff
+ 1518                           
+ 1519   340B                    congratulations_text:
+ 1520   340B   C8 10 43 4F 4E           .db red+8, 16,'CONGRATULATIONS!',0
+        3410   47 52 41 54 55 
+        3415   4C 41 54 49 4F 
+        341A   4E 53 21 00 
+ 1521   341E                    new_high_score_text:
+ 1522   341E   49 11 4E 45 57           .db yellow+9, 17,'NEW HIGH SCORE',0
+        3423   20 48 49 47 48 
+        3428   20 53 43 4F 52 
+        342D   45 00 
+ 1523   342F                    enter_name_text:
+ 1524   342F   85 13 50 4C 45           .db blue+5,19,'PLEASE ENTER YOUR NAME:',0
+        3434   41 53 45 20 45 
+        3439   4E 54 45 52 20 
+        343E   59 4F 55 52 20 
+        3443   4E 41 4D 45 3A 
+        3448   00 
+ 1525   3449   FF                       .db $ff
+ 1526                           
+ 1527   344A                    status_panel_text:
+ 1528   344A   C0 00 53 43 4F           .db red+0, 0,'SCORE',0
+        344F   52 45 00 
+ 1529   3452   46 00 30 30 30           .db yellow+6,0,'00000',0
+        3457   30 30 00 
+ 1530   345A   8A 02 48 59 50           .db blue+10, 2,'HYPER VIPER',0
+        345F   45 52 20 56 49 
+        3464   50 45 52 00 
+ 1531   3468   9B 00 4C 49 56           .db blue+27, 0,'LIVES',0
+        346D   45 53 00 
+ 1532   3470   FF                       .db $ff
+ 1533                           
+ 1534   3471                    which_screen_text:
+ 1535   3471   04 11 20 20 20           .db 4,17,'                       ',0
+        3476   20 20 20 20 20 
+        347B   20 20 20 20 20 
+        3480   20 20 20 20 20 
+        3485   20 20 20 20 20 
+        348A   00 
+ 1536   348B   05 12 57 48 49           .db 5,18,'WHICH SCREEN (1 TO  )',0
+        3490   43 48 20 53 43 
+        3495   52 45 45 4E 20 
+        349A   28 31 20 54 4F 
+        349F   20 20 29 00 
+ 1537   34A3   04 13 20 20 20           .db 4,19,'                       ',0
+        34A8   20 20 20 20 20 
+        34AD   20 20 20 20 20 
+        34B2   20 20 20 20 20 
+        34B7   20 20 20 20 20 
+        34BC   00 
+ 1538   34BD   FF                       .db $ff
+ 1539                           
+ 1540   34BE                    pause_on_text
+ 1541   34BE   42 01 47 41 4D           .db yellow+2, 1,'GAME PAUSE, DELETE CONTINUES',0
+        34C3   45 20 50 41 55 
+        34C8   53 45 2C 20 44 
+        34CD   45 4C 45 54 45 
+        34D2   20 43 4F 4E 54 
+        34D7   49 4E 55 45 53 
+        34DC   00 
+ 1542   34DD   FF                       .db $ff
+ 1543                           
+ 1544   34DE                    pause_off_text
+ 1545   34DE   02 01 20 20 20           .db 2, 1,'                            ',0
+        34E3   20 20 20 20 20 
+        34E8   20 20 20 20 20 
+        34ED   20 20 20 20 20 
+        34F2   20 20 20 20 20 
+        34F7   20 20 20 20 20 
+        34FC   00 
+ 1546   34FD   FF                       .db $ff
+ 1547                           
+ 1548   34FE                    game_over_text:
+ 1549   34FE   0A 0B 20 20 20           .db green+10,11,'           ',0
+        3503   20 20 20 20 20 
+        3508   20 20 20 00 
+ 1550   350C   8A 0C 20 47 41           .db blue+10,12,' GAME OVER ',0
+        3511   4D 45 20 4F 56 
+        3516   45 52 20 00 
+ 1551   351A   0A 0D 20 20 20           .db green+10,13,'           ',0
+        351F   20 20 20 20 20 
+        3524   20 20 20 00 
+ 1552   3528   FF                       .db $ff
+ 1553                           
+ 1554                           
+ 1555   3529                                   include font.inc
+ 1556                           ;Font file for ASCII chars 32-128
+ 1557                           
+ 1558   3529                    font:
+ 1559                           ;special chars
+ 1560   3529   0D FF B0 56 A0   .db $0d,$ff,$b0,$56,$a0,$56,$20,$59,$a0,$5b,$20,$5e,$10,$5e,$00,$5e ;$4000
+        352E   56 20 59 A0 5B 
+        3533   20 5E 10 5E 00 
+        3538   5E 
+ 1561   3539   F0 5D E0 5D D0   .db $f0,$5d,$e0,$5d,$d0,$5d,$c0,$5d,$b0,$5d,$a0,$5d,$80,$68,$70,$68 ;$4010
+        353E   5D C0 5D B0 5D 
+        3543   A0 5D 80 68 70 
+        3548   68 
+ 1562   3549   F0 65 70 63 F0   .db $f0,$65,$70,$63,$f0,$60,$e0,$60,$d0,$60,$c0,$60,$b0,$60,$a0,$60 ;$4020
+        354E   60 E0 60 D0 60 
+        3553   C0 60 B0 60 A0 
+        3558   60 
+ 1563   3559   90 60 80 60 70   .db $90,$60,$80,$60,$70,$60,$f0,$62,$70,$65,$f0,$67,$70,$6a,$f0,$5e ;$4030
+        355E   60 F0 62 70 65 
+        3563   F0 67 70 6A F0 
+        3568   5E 
+ 1564   3569   B0 76 A0 76 90   .db $b0,$76,$a0,$76,$90,$76,$e0,$65,$90,$47,$80,$47,$70,$47,$60,$47 ;$4040
+        356E   76 E0 65 90 47 
+        3573   80 47 70 47 60 
+        3578   47 
+ 1565   3579   50 47 40 47 30   .db $50,$47,$40,$47,$30,$47,$b0,$49,$30,$4c,$10,$5d,$20,$6c,$a0,$69 ;$4050
+        357E   47 B0 49 30 4C 
+        3583   10 5D 20 6C A0 
+        3588   69 
+ 1566   3589   20 67 A0 64 20   .db $20,$67,$a0,$64,$20,$62,$a0,$5f,$20,$5d,$a0,$5a,$20,$58,$a0,$55 ;$4060
+        358E   62 A0 5F 20 5D 
+        3593   A0 5A 20 58 A0 
+        3598   55 
+ 1567   3599   00 38 78 7C FC   .db $00,$38,$78,$7c,$fc,$fe,$fe,$fc,$00,$88,$88,$cc,$cc,$ee,$ee,$cc ;$4070 rock
+        359E   FE FE FC 00 88 
+        35A3   88 CC CC EE EE 
+        35A8   CC 
+ 1568   35A9   08 00 00 00 D0   .db $08,$00,$00,$00,$d0,$41,$e0,$41,$f0,$41,$00,$42,$10,$42,$20,$42 ;$4080
+        35AE   41 E0 41 F0 41 
+        35B3   00 42 10 42 20 
+        35B8   42 
+ 1569   35B9   3C 5A FF BD FF   .db $3c,$5a,$ff,$bd,$ff,$18,$18,$18,$00,$0c,$4a,$0f,$2d,$81,$80,$80 ;$4090 mushroom
+        35BE   18 18 18 00 0C 
+        35C3   4A 0F 2D 81 80 
+        35C8   80 
+ 1570   35C9   F7 F7 F7 00 DF   .db $f7,$f7,$f7,$00,$df,$df,$df,$00,$b0,$b0,$b0,$00,$f0,$f0,$f0,$00 ;$40a0 wall
+        35CE   DF DF 00 B0 B0 
+        35D3   B0 00 F0 F0 F0 
+        35D8   00 
+ 1571   35D9   18 3C 6A D7 EB   .db $18,$3c,$6a,$d7,$eb,$56,$3c,$18,$80,$c0,$e8,$fc,$fc,$e8,$c0,$80 ;$40b0 snake body
+        35DE   56 3C 18 80 C0 
+        35E3   E8 FC FC E8 C0 
+        35E8   80 
+ 1572   35E9   3C EE 3F 0F 0F   .db $3c,$ee,$3f,$0f,$0f,$3f,$ee,$3c,$0c,$0e,$0f,$0f,$0f,$0f,$0e,$0c ;$40c0 snake head left
+        35EE   3F EE 3C 0C 0E 
+        35F3   0F 0F 0F 0F 0E 
+        35F8   0C 
+ 1573   35F9   3C 77 FC F0 F0   .db $3c,$77,$fc,$f0,$f0,$fc,$f7,$3c,$0c,$87,$0c,$00,$00,$0c,$87,$0c ;$40d0 snake head right
+        35FE   FC F7 3C 0C 87 
+        3603   0C 00 00 0C 87 
+        3608   0C 
+ 1574   3609   42 42 E7 A5 FF   .db $42,$42,$e7,$a5,$ff,$ff,$7e,$3c,$02,$02,$07,$25,$0f,$0f,$0e,$0c ;$40e0 snake head up
+        360E   FF 7E 3C 02 02 
+        3613   07 25 0F 0F 0E 
+        3618   0C 
+ 1575   3619   3C 7E FF FF A5   .db $3c,$7e,$ff,$ff,$a5,$e7,$42,$42,$0c,$0e,$0f,$0f,$25,$07,$02,$02 ;$40f0 snake head down
+        361E   E7 42 42 0C 0E 
+        3623   0F 0F 25 07 02 
+        3628   02 
+ 1576                           
+ 1577                           ;ascii chars
+ 1578   3629   00 00 00 00 00   .db $00,$00,$00,$00,$00,$00,$00,$00 ; space 
+        362E   00 00 00 
+ 1579   3631   0C 0C 0C 0C 0C   .db $0c,$0c,$0c,$0c,$0c,$00,$0c,$00 ; !
+        3636   00 0C 00 
+ 1580   3639   6C 6C 6C 00 00   .db $6C,$6C,$6C,$00,$00,$00,$00,$00 ; "
+        363E   00 00 00 
+ 1581   3641   6C 6C FE 6C FE   .db $6C,$6C,$FE,$6C,$FE,$6C,$6C,$00 ; #
+        3646   6C 6C 00 
+ 1582   3649   30 7C C0 78 0C   .db $30,$7C,$C0,$78,$0C,$F8,$30,$00 ; $
+        364E   F8 30 00 
+ 1583   3651   00 C6 CC 18 30   .db $00,$C6,$CC,$18,$30,$66,$C6,$00 ; %
+        3656   66 C6 00 
+ 1584   3659   38 6C 38 76 DC   .db $38,$6C,$38,$76,$DC,$CC,$76,$00 ; &
+        365E   CC 76 00 
+ 1585   3661   60 60 00 00 00   .db $60,$60,$00,$00,$00,$00,$00,$00 ; '
+        3666   00 00 00 
+ 1586   3669   18 30 60 60 60   .db $18,$30,$60,$60,$60,$30,$18,$00 ; (
+        366E   30 18 00 
+ 1587   3671   60 30 18 18 18   .db $60,$30,$18,$18,$18,$30,$60,$00 ; )
+        3676   30 60 00 
+ 1588   3679   00 CC 30 FC 30   .db $00,$cc,$30,$fc,$30,$cc,$00,$00 ; *
+        367E   CC 00 00 
+ 1589   3681   00 30 30 FC 30   .db $00,$30,$30,$FC,$30,$30,$00,$00 ; +
+        3686   30 00 00 
+ 1590   3689   00 00 00 00 00   .db $00,$00,$00,$00,$00,$30,$30,$60 ; ,
+        368E   30 30 60 
+ 1591   3691   00 00 00 FC 00   .db $00,$00,$00,$FC,$00,$00,$00,$00 ; -
+        3696   00 00 00 
+ 1592   3699   00 00 00 00 00   .db $00,$00,$00,$00,$00,$30,$30,$00 ; .
+        369E   30 30 00 
+ 1593   36A1   0C 0C 0C 30 30   .db $0c,$0C,$0c,$30,$30,$C0,$c0,$00 ; /
+        36A6   C0 C0 00 
+ 1594                           
+ 1595   36A9                    livenum:
+ 1596   36A9   30 CC CC CC CC   .db $30,$cc,$cc,$cc,$cc,$cc,$30,$00 ; 0
+        36AE   CC 30 00 
+ 1597   36B1   0C 3C 0C 0C 0C   .db $0c,$3C,$0C,$0C,$0C,$0C,$0C,$00 ; 1
+        36B6   0C 0C 00 
+ 1598   36B9   30 CC 0C 0C 30   .db $30,$cc,$0c,$0c,$30,$c0,$Fc,$00 ; 2
+        36BE   C0 FC 00 
+ 1599   36C1   30 CC 0C 30 0C   .db $30,$cc,$0c,$30,$0c,$cc,$30,$00 ; 3
+        36C6   CC 30 00 
+ 1600   36C9   0C 3C CC CC CC   .db $0c,$3c,$cc,$cc,$cc,$Fc,$0c,$00 ; 4
+        36CE   FC 0C 00 
+ 1601   36D1   FC C0 C0 F0 0C   .db $fc,$c0,$c0,$f0,$0c,$cc,$30,$00 ; 5
+        36D6   CC 30 00 
+ 1602   36D9   0C 30 C0 F0 CC   .db $0c,$30,$c0,$f0,$cc,$cc,$30,$00 ; 6
+        36DE   CC 30 00 
+ 1603   36E1   FC 0C 0C 30 C0   .db $fc,$0c,$0c,$30,$C0,$c0,$c0,$00 ; 7
+        36E6   C0 C0 00 
+ 1604   36E9   30 CC CC 30 CC   .db $30,$cc,$cc,$30,$cc,$cc,$30,$00 ; 8
+        36EE   CC 30 00 
+ 1605   36F1   30 CC CC 3C 0C   .db $30,$cc,$cc,$3c,$0c,$30,$c0,$00 ; 9
+        36F6   30 C0 00 
+ 1606   36F9   00 30 30 00 30   .db $00,$30,$30,$00,$30,$30,$00,$00 ; :
+        36FE   30 00 00 
+ 1607   3701   00 30 30 00 30   .db $00,$30,$30,$00,$30,$30,$c0,$00 ; ;
+        3706   30 C0 00 
+ 1608   3709   18 30 60 C0 60   .db $18,$30,$60,$C0,$60,$30,$18,$00 ; <
+        370E   30 18 00 
+ 1609   3711   00 00 FC 00 00   .db $00,$00,$FC,$00,$00,$FC,$00,$00 ; =
+        3716   FC 00 00 
+ 1610   3719   60 30 18 0C 18   .db $60,$30,$18,$0C,$18,$30,$60,$00 ; >
+        371E   30 60 00 
+ 1611   3721   78 CC 0C 18 30   .db $78,$CC,$0C,$18,$30,$00,$30,$00 ; ?
+        3726   00 30 00 
+ 1612   3729   7C C6 DE DE DE   .db $7C,$C6,$DE,$DE,$DE,$C0,$78,$00 ; @
+        372E   C0 78 00 
+ 1613   3731   30 CC CC FC CC   .db $30,$cc,$cc,$fc,$cc,$cc,$cc,$00 ; A
+        3736   CC CC 00 
+ 1614   3739   F0 CC CC F0 CC   .db $f0,$cc,$cc,$f0,$cc,$cc,$f0,$00 ; B
+        373E   CC F0 00 
+ 1615   3741   30 CC C0 C0 C0   .db $30,$cc,$c0,$c0,$c0,$cc,$30,$00 ; C
+        3746   CC 30 00 
+ 1616   3749   F0 CC CC CC CC   .db $f0,$cc,$cc,$cc,$cc,$cc,$f0,$00 ; D
+        374E   CC F0 00 
+ 1617   3751   FC C0 C0 FC C0   .db $fc,$c0,$c0,$fc,$c0,$c0,$Fc,$00 ; E
+        3756   C0 FC 00 
+ 1618   3759   FC C0 C0 F0 C0   .db $fc,$c0,$c0,$f0,$c0,$c0,$c0,$00 ; F
+        375E   C0 C0 00 
+ 1619   3761   30 CC C0 C0 CC   .db $30,$cc,$c0,$c0,$cc,$cc,$3c,$00 ; G
+        3766   CC 3C 00 
+ 1620   3769   CC CC CC FC CC   .db $cc,$cc,$cc,$fc,$cc,$cc,$cc,$00 ; H
+        376E   CC CC 00 
+ 1621   3771   30 30 30 30 30   .db $30,$30,$30,$30,$30,$30,$30,$00 ; I
+        3776   30 30 00 
+ 1622   3779   0C 0C 0C 0C 0C   .db $0c,$0C,$0C,$0C,$0C,$cC,$30,$00 ; J
+        377E   CC 30 00 
+ 1623   3781   CC CC CC F0 CC   .db $cc,$cc,$cc,$f0,$cc,$cc,$cc,$00 ; K
+        3786   CC CC 00 
+ 1624   3789   C0 C0 C0 C0 C0   .db $c0,$c0,$c0,$c0,$c0,$c0,$fc,$00 ; L
+        378E   C0 FC 00 
+ 1625   3791   CC CC FC CC CC   .db $cc,$cc,$fc,$cc,$cc,$cc,$cc,$00 ; M
+        3796   CC CC 00 
+ 1626   3799   F0 CC CC CC CC   .db $f0,$cc,$cc,$cc,$cc,$cc,$cc,$00 ; N
+        379E   CC CC 00 
+ 1627   37A1   30 CC CC CC CC   .db $30,$cc,$cc,$cc,$cc,$cc,$30,$00 ; O
+        37A6   CC 30 00 
+ 1628   37A9   F0 CC CC F0 C0   .db $f0,$cc,$cc,$f0,$c0,$c0,$c0,$00 ; P
+        37AE   C0 C0 00 
+ 1629   37B1   30 CC CC CC FC   .db $30,$cc,$cc,$cc,$fc,$cc,$3c,$00 ; Q
+        37B6   CC 3C 00 
+ 1630   37B9   F0 CC CC F0 CC   .db $f0,$cc,$cc,$f0,$cc,$cc,$cc,$00 ; R
+        37BE   CC CC 00 
+ 1631   37C1   30 CC C0 30 0C   .db $30,$cc,$c0,$30,$0c,$cc,$30,$00 ; S
+        37C6   CC 30 00 
+ 1632   37C9   FC 30 30 30 30   .db $fc,$30,$30,$30,$30,$30,$30,$00 ; T
+        37CE   30 30 00 
+ 1633   37D1   CC CC CC CC CC   .db $cc,$cc,$cc,$cc,$cc,$cc,$3c,$00 ; U
+        37D6   CC 3C 00 
+ 1634   37D9   CC CC CC CC CC   .db $cc,$cc,$cc,$cc,$cc,$cc,$30,$00 ; V
+        37DE   CC 30 00 
+ 1635   37E1   CC CC CC CC FC   .db $cc,$cc,$cc,$cc,$fc,$cc,$cc,$00 ; W
+        37E6   CC CC 00 
+ 1636   37E9   CC CC CC 30 CC   .db $cc,$cc,$cc,$30,$cc,$cc,$cc,$00 ; X
+        37EE   CC CC 00 
+ 1637   37F1   CC CC CC FC 30   .db $cc,$cc,$cc,$fc,$30,$30,$30,$00 ; Y
+        37F6   30 30 00 
+ 1638   37F9   FC 0C 0C 30 C0   .db $fc,$0c,$0c,$30,$c0,$c0,$fc,$00 ; Z
+        37FE   C0 FC 00 
+ 1639   3801   78 60 60 60 60   .db $78,$60,$60,$60,$60,$60,$78,$00 ; [
+        3806   60 78 00 
+ 1640   3809   C0 60 30 18 0C   .db $C0,$60,$30,$18,$0C,$06,$02,$00 ; \
+        380E   06 02 00 
+ 1641   3811   78 18 18 18 18   .db $78,$18,$18,$18,$18,$18,$78,$00 ; ]
+        3816   18 78 00 
+ 1642   3819   10 38 6C C6 00   .db $10,$38,$6C,$C6,$00,$00,$00,$00 ; ^
+        381E   00 00 00 
+ 1643                           ;.db $18,$18,$18,$18,$18,$18,$18,$18 ; _=|
+ 1644                           ;.db $30,$30,$18,$00,$00,$00,$00,$00 ; `
+ 1645                           ;.db $00,$00,$3E,$06,$3E,$26,$3E,$00 ; a
+ 1646                           ;.db $30,$30,$3E,$26,$26,$26,$3E,$00 ; b
+ 1647                           ;.db $00,$00,$3E,$30,$30,$30,$3E,$00 ; c
+ 1648                           ;.db $06,$06,$3E,$26,$26,$26,$3E,$00 ; d
+ 1649                           ;.db $00,$00,$3E,$26,$3E,$20,$3E,$00 ; e
+ 1650                           ;.db $1C,$10,$3E,$18,$18,$18,$18,$00 ; f
+ 1651                           ;.db $00,$00,$3E,$34,$34,$1E,$26,$3E ; g
+ 1652                           ;.db $30,$30,$3E,$26,$26,$26,$26,$00 ; h
+ 1653                           ;.db $0C,$00,$0C,$0C,$0C,$0C,$0C,$00 ; i
+ 1654                           ;.db $0C,$00,$0C,$0C,$0C,$0C,$04,$1C ; j
+ 1655                           ;.db $30,$30,$32,$34,$3C,$26,$26,$00 ; k
+ 1656                           ;.db $0C,$0C,$0C,$0C,$0C,$0C,$0C,$00 ; l
+ 1657                           ;.db $00,$00,$7F,$5B,$5B,$5B,$5B,$00 ; m
+ 1658                           ;.db $00,$00,$3E,$26,$26,$26,$26,$00 ; n
+ 1659                           ;.db $00,$00,$3E,$26,$26,$26,$3E,$00 ; o
+ 1660                           ;.db $00,$00,$3E,$32,$32,$32,$3E,$30 ; p
+ 1661                           ;.db $00,$00,$3E,$32,$32,$32,$3E,$06 ; q
+ 1662                           ;.db $00,$00,$34,$38,$30,$30,$30,$00 ; r
+ 1663                           ;.db $00,$00,$3E,$30,$3E,$06,$3E,$00 ; s
+ 1664                           ;.db $04,$04,$3E,$0C,$0C,$0C,$0C,$00 ; t
+ 1665                           ;.db $00,$00,$32,$32,$32,$32,$3E,$00 ; u
+ 1666                           ;.db $00,$00,$32,$32,$32,$1C,$08,$00 ; v
+ 1667                           ;.db $00,$00,$6D,$6D,$6D,$6D,$7F,$00 ; w
+ 1668                           ;.db $00,$00,$32,$34,$1C,$16,$26,$00 ; x
+ 1669                           ;.db $00,$00,$32,$32,$32,$32,$3E,$06 ; y
+ 1670                           ;.db $00,$00,$3E,$0E,$1C,$38,$3E,$00 ; z
+ 1671                           ;.db $1C,$30,$30,$E0,$30,$30,$1C,$00 ; {
+ 1672                           ;.db $18,$18,$18,$18,$18,$18,$18,$18 ; |
+ 1673                           ;.db $E0,$30,$30,$1C,$30,$30,$E0,$00 ; }
+ 1674                           ;.db $00,$00,$00,$00,$00,$00,$00,$00 ; ~
+ 1675                           ;.db $00,$00,$00,$00,$00,$00,$00,$00 ; 
+ 1676                           
+ 1677                           ;======================================================================
+ 1678                           ;FONT ROUTINES:
+ 1679                           ;======================================================================
+ 1680                           ;PUTSTRING
+ 1681                           ; - x,y,string,0
+ 1682                           ; - x,y,string,0
+ 1683                           ; - $ea
+ 1684                           ;
+ 1685                           ;PUTCHAR x,y,a
+ 1686                           ;======================================================================
+ 1687          0070             XPOS     equ $70
+ 1688          0071             YPOS     equ $71
+ 1689          0072             COLOR    equ $72
+ 1690          0078             COLORTMP equ $78
+ 1691                           
+ 1692   3821                    PUTSTRING:
+ 1693   3821   86 E8                stx $e8
+ 1694   3823   84 E9                sty $e9
+ 1695                           
+ 1696                           
+ 1697   3825   A0 00                ldy #0
+ 1698   3827                    P_S_0:
+ 1699   3827   B1 E8                lda ($e8),y    ; Check end of printing
+ 1700   3829   C9 FF                cmp #$ff
+ 1701   382B   F0 21                beq P_S_4
+ 1702                           
+ 1703   382D                    P_S_1:
+ 1704   382D   85 70                sta XPOS       ; Save x,y,attribute
+ 1705   382F   20 56 38             jsr setcolor
+ 1706   3832   20 4F 38             jsr PTR_INC
+ 1707   3835   B1 E8                lda ($e8),y
+ 1708   3837   85 71                sta YPOS
+ 1709                           
+ 1710   3839                    P_S_2:
+ 1711   3839   20 4F 38             jsr PTR_INC    ; Print character until 0
+ 1712   383C   B1 E8                lda ($e8),y
+ 1713   383E   F0 08                beq P_S_5
+ 1714   3840   20 70 38             jsr PRINTCHAR
+ 1715   3843   E6 70                inc XPOS
+ 1716   3845   4C 39 38             jmp P_S_2
+ 1717   3848                    P_S_5:
+ 1718   3848   20 4F 38             jsr PTR_INC
+ 1719   384B   4C 27 38             jmp P_S_0
+ 1720                           
+ 1721   384E                    P_S_4:
+ 1722   384E   60                   rts            ; Return to program
+ 1723                           
+ 1724                           PTR_INC:           ; Increment textpointer
+ 1725   384F   E6 E8                inc $e8
+ 1726   3851   D0 02                bne PTR_1
+ 1727   3853   E6 E9                inc $e9
+ 1728   3855                    PTR_1:
+ 1729   3855   60                   rts
+ 1730                           
+ 1731   3856                    setcolor:
+ 1732   3856   85 78                sta COLORTMP
+ 1733   3858   A5 70                lda XPOS
+ 1734   385A   29 1F                and #31
+ 1735   385C   85 70                sta XPOS
+ 1736                           
+ 1737   385E   A2 04                ldx #4
+ 1738   3860                    nshift:
+ 1739   3860   A5 78                lda COLORTMP
+ 1740   3862   0A                   asl a
+ 1741   3863   26 72                rol COLOR
+ 1742   3865   0A                   asl a
+ 1743   3866   26 72                rol COLOR
+ 1744   3868   CA                   dex
+ 1745   3869   D0 F5                bne nshift
+ 1746   386B   60                   rts
+ 1747                           
+ 1748                           ;----------------------------------------------------------------------
+ 1749          0073             SCR      equ $73
+ 1750          0075             CHR      equ $75
+ 1751          0077             TMP_Y    equ $77
+ 1752                           
+ 1753   386C                    PUTCHAR:
+ 1754   386C   86 70                stx XPOS
+ 1755   386E   84 71                sty YPOS
+ 1756                           
+ 1757   3870                    PRINTCHAR:
+ 1758   3870   85 75                sta CHR        ; Calculate characterspritedata address
+ 1759   3872   A9 00                lda #0         ; = A * 8 + charsprite data address
+ 1760   3874   85 76                sta CHR+1
+ 1761   3876   06 75                asl CHR
+ 1762   3878   26 76                rol CHR+1
+ 1763   387A   06 75                asl CHR
+ 1764   387C   26 76                rol CHR+1
+ 1765   387E   06 75                asl CHR
+ 1766   3880   26 76                rol CHR+1
+ 1767   3882   A5 75                lda CHR
+ 1768   3884   18                   clc
+ 1769   3885   69 29                adc #<font
+ 1770   3887   85 75                sta CHR
+ 1771   3889   A5 76                lda CHR+1
+ 1772   388B   69 35                adc #>font
+ 1773   388D   85 76                sta CHR+1
+ 1774   388F                        
+ 1775   388F   A5 70                lda XPOS       ; Calculate screenaddress
+ 1776   3891   85 73                sta SCR
+ 1777   3893   A5 71                lda YPOS
+ 1778   3895   18                   clc
+ 1779   3896   69 80                adc #$80
+ 1780   3898   85 74                sta SCR+1
+ 1781   389A                     
+ 1782   389A   84 77                sty TMP_Y
+ 1783   389C   A2 00                ldx #0
+ 1784   389E   A0 00                ldy #0         ; Put character on screen
+ 1785   38A0                    P_C_1:
+ 1786   38A0   B1 75                lda (CHR),y
+ 1787   38A2   25 72                and COLOR
+ 1788   38A4   91 73                sta (SCR),y
+ 1789   38A6   E6 75                inc CHR
+ 1790   38A8   D0 02                bne P_C_2
+ 1791   38AA   E6 76                inc CHR+1
+ 1792   38AC                    P_C_2:
+ 1793   38AC   A5 73                lda SCR
+ 1794   38AE   18                   clc
+ 1795   38AF   69 20                adc #$20
+ 1796   38B1   85 73                sta SCR
+ 1797   38B3   A5 74                lda SCR+1
+ 1798   38B5   69 00                adc #0
+ 1799   38B7   85 74                sta SCR+1
+ 1800   38B9   E8                   inx
+ 1801   38BA   E0 08                cpx #8
+ 1802   38BC   D0 E2                bne P_C_1
+ 1803                           
+ 1804   38BE   A4 77                ldy TMP_Y
+ 1805   38C0   60                   rts
+ 1806   38C1                     
+ 1807   38C1                    INV_CURSOR:
+ 1808   38C1   86 73                stx SCR
+ 1809   38C3   98                   tya
+ 1810   38C4   18                   clc
+ 1811   38C5   69 80                adc #$80
+ 1812   38C7   85 74                sta SCR+1
+ 1813   38C9                     
+ 1814   38C9   A0 00                ldy #0         ; Put character on screen
+ 1815   38CB                    IC1:
+ 1816   38CB   B1 73                lda (SCR),y
+ 1817   38CD   49 FF                eor #$ff
+ 1818   38CF   91 73                sta (SCR),y
+ 1819   38D1   98                   tya
+ 1820   38D2   18                   clc
+ 1821   38D3   69 20                adc #$20
+ 1822   38D5   A8                   tay
+ 1823   38D6   D0 F3                bne IC1
+ 1824   38D8   60                   rts    
+ 1825   3900                                   org $3900
+ 1826   3900                                   include sprites.inc
+ 1827   3900   0D FF B0 56 A0   .db $0d,$ff,$b0,$56,$a0,$56,$20,$59,$a0,$5b,$20,$5e,$10,$5e,$00,$5e ;$4000
+        3905   56 20 59 A0 5B 
+        390A   20 5E 10 5E 00 
+        390F   5E 
+ 1828   3910   F0 5D E0 5D D0   .db $f0,$5d,$e0,$5d,$d0,$5d,$c0,$5d,$b0,$5d,$a0,$5d,$80,$68,$70,$68 ;$4010
+        3915   5D C0 5D B0 5D 
+        391A   A0 5D 80 68 70 
+        391F   68 
+ 1829   3920   F0 65 70 63 F0   .db $f0,$65,$70,$63,$f0,$60,$e0,$60,$d0,$60,$c0,$60,$b0,$60,$a0,$60 ;$4020
+        3925   60 E0 60 D0 60 
+        392A   C0 60 B0 60 A0 
+        392F   60 
+ 1830   3930   90 60 80 60 70   .db $90,$60,$80,$60,$70,$60,$f0,$62,$70,$65,$f0,$67,$70,$6a,$f0,$5e ;$4030
+        3935   60 F0 62 70 65 
+        393A   F0 67 70 6A F0 
+        393F   5E 
+ 1831   3940   B0 76 A0 76 90   .db $b0,$76,$a0,$76,$90,$76,$e0,$65,$90,$47,$80,$47,$70,$47,$60,$47 ;$4040
+        3945   76 E0 65 90 47 
+        394A   80 47 70 47 60 
+        394F   47 
+ 1832   3950   50 47 40 47 30   .db $50,$47,$40,$47,$30,$47,$b0,$49,$30,$4c,$10,$5d,$20,$6c,$a0,$69 ;$4050
+        3955   47 B0 49 30 4C 
+        395A   10 5D 20 6C A0 
+        395F   69 
+ 1833   3960   20 67 A0 64 20   .db $20,$67,$a0,$64,$20,$62,$a0,$5f,$20,$5d,$a0,$5a,$20,$58,$a0,$55 ;$4060
+        3965   62 A0 5F 20 5D 
+        396A   A0 5A 20 58 A0 
+        396F   55 
+ 1834   3970   00 28 A8 AA AA   .db $00,$28,$a8,$aa,$aa,$aa,$aa,$28,0,0,0,0,0,0,0,0 ;$4070 rock
+        3975   AA AA 28 00 00 
+        397A   00 00 00 00 00 
+        397F   00 
+ 1835   3980   08 00 00 00 D0   .db $08,$00,$00,$00,$d0,$41,$e0,$41,$f0,$41,$00,$42,$10,$42,$20,$42 ;$4080
+        3985   41 E0 41 F0 41 
+        398A   00 42 10 42 20 
+        398F   42 
+ 1836   3990   3C F7 DF FD 14   .db $3c,$f7,$df,$fd,$14,$14,$14,$00,0,0,0,0,0,0,0,0 ;$4090 mushroom
+        3995   14 14 00 00 00 
+        399A   00 00 00 00 00 
+        399F   00 
+ 1837   39A0   F7 F7 F7 00 DF   .db $f7,$f7,$f7,$00,$df,$df,$df,$00,0,0,0,0,0,0,0,0 ;$40a0 wall
+        39A5   DF DF 00 00 00 
+        39AA   00 00 00 00 00 
+        39AF   00 
+ 1838   39B0   CC 3C DD 77 DD   .db $cc,$3c,$dd,$77,$dd,$77,$3c,$cc,0,0,0,0,0,0,0,0 ;$40b0 snake body
+        39B5   77 3C CC 00 00 
+        39BA   00 00 00 00 00 
+        39BF   00 
+ 1839                           ;.db $3c,$f7,$df,$f7,$df,$f7,$df,$3c,0,0,0,0,0,0,0,0 ;$40b0 snake body
+ 1840   39C0   3C EC FF 0F 0F   .db $3c,$ec,$ff,$0f,$0f,$ff,$ec,$3c,0,0,0,0,0,0,0,0 ;$40c0 snake head left
+        39C5   FF EC 3C 00 00 
+        39CA   00 00 00 00 00 
+        39CF   00 
+ 1841   39D0   3C 3B FF F0 F0   .db $3c,$3b,$ff,$f0,$f0,$ff,$3b,$3c,0,0,0,0,0,0,0,0 ;$40d0 snake head right
+        39D5   FF 3B 3C 00 00 
+        39DA   00 00 00 00 00 
+        39DF   00 
+ 1842   39E0   C3 C3 BE FF FF   .db $c3,$c3,$be,$ff,$ff,$ff,$3c,$3c,0,0,0,0,0,0,0,0 ;$40e0 snake head up
+        39E5   FF 3C 3C 00 00 
+        39EA   00 00 00 00 00 
+        39EF   00 
+ 1843   39F0   3C 3C FF FF FF   .db $3c,$3c,$ff,$ff,$ff,$be,$c3,$c3,0,0,0,0,0,0,0,0 ;$40f0 snake head down
+        39F5   BE C3 C3 00 00 
+        39FA   00 00 00 00 00 
+        39FF   00 
+ 1844                           
+ 1845                           ;0000 0000
+ 1846                           ;0011 1100
+ 1847                           ;1101 1101
+ 1848                           ;0111 0111
+ 1849                           ;1101 1101
+ 1850                           ;0111 0111
+ 1851                           ;0011 1100
+ 1852                           ;0000 0000
+ 1853   3A00                                   include sound.inc
+ 1854                           ;---------------------------------------------------
+ 1855                           ; SOUND A,X,Y, produce tone
+ 1856                           ;
+ 1857                           ; A = Duration (1-255) * 0,005 usec
+ 1858                           ; X = Pitch (9-19)
+ 1859                           ; Y = Octave (0-7)
+ 1860                           ;---------------------------------------------------
+ 1861                           
+ 1862          0099             dur_val   equ $99
+ 1863          009A             pit_val   equ $9a
+ 1864          009B             oct_val   equ $9b
+ 1865                           
+ 1866   3A00                    sound:
+ 1867   3A00   85 99                    sta dur_val
+ 1868   3A02   86 9A                    stx pit_val
+ 1869   3A04   84 9B                    sty oct_val
+ 1870                           
+ 1871   3A06   A9 13                    lda #>5000     ; 2
+ 1872   3A08   8D 09 B8                 sta $b809      ; 4
+ 1873   3A0B   A9 88                    lda #<5000     ; 2
+ 1874   3A0D   8D 08 B8                 sta $b808      ; 4
+ 1875                           sloop3:                       ;  
+ 1876   3A10   20 2B 3A                   jsr toggle         ;22 , t3=t2+25
+ 1877                           
+ 1878   3A13   A4 9B                      ldy oct_val        ; 3 , t2=Y*(t1+5)+3
+ 1879   3A15   A6 9A            sloop2:    ldx pit_val       ; 3 , t1=X*34+3
+ 1880   3A17   AD 09 B8         sloop1:       lda $b809      ; 4
+ 1881   3A1A   C9 FF                          cmp #$ff       ; 2
+ 1882   3A1C   F0 16                          beq chk_timer  ; 2
+ 1883   3A1E   20 45 3A                       jsr wait       ; 6+15
+ 1884   3A21   CA               sloop5:       dex            ; 2
+ 1885   3A22   D0 F3                        bne sloop1        ; 3
+ 1886   3A24   88                           dey              ; 2
+ 1887   3A25   D0 EE                      bne sloop2          ; 3
+ 1888   3A27   4C 10 3A                 jmp sloop3            ; 3
+ 1889                           
+ 1890   3A2A                    end_sound:
+ 1891   3A2A   60                       rts             
+ 1892                           
+ 1893                           ;--------------------------------------
+ 1894                           ; Toggle speaker
+ 1895                           ;--------------------------------------
+ 1896   3A2B                    toggle:
+ 1897   3A2B   AD 02 B0                 lda $b002      ; 4
+ 1898   3A2E   49 04                    eor #4         ; 2
+ 1899   3A30   8D 02 B0                 sta $b002      ; 4
+ 1900   3A33   60                       rts            ; 6
+ 1901                           
+ 1902                           ;--------------------------------------
+ 1903                           ; Check if time is over (21 usec)
+ 1904                           ;--------------------------------------
+ 1905   3A34                    chk_timer:
+ 1906   3A34   C6 99                    dec dur_val    ; 3
+ 1907   3A36   F0 F2                    beq end_sound  ; 3
+ 1908   3A38                    settimer:
+ 1909   3A38   A9 13                    lda #>5000     ; 2
+ 1910   3A3A   8D 09 B8                 sta $b809      ; 4
+ 1911   3A3D   A9 88                    lda #<5000     ; 2
+ 1912   3A3F   8D 08 B8                 sta $b808      ; 4
+ 1913   3A42   4C 21 3A                 jmp sloop5      ; 3
+ 1914                           
+ 1915                           ;--------------------------------------
+ 1916                           ; Wait routine 21-6=15 usec
+ 1917                           ;--------------------------------------
+ 1918   3A45                    wait:
+ 1919   3A45   45 00                    eor $0         ; 3
+ 1920   3A47   EA                       nop            ; 2
+ 1921   3A48   EA                       nop            ; 2
+ 1922   3A49   EA                       nop            ; 2
+ 1923   3A4A   60                       rts            ; 6
+ 1924   3A4B                    sounds:
+ 1925                           eat_sound:              ; 2,-15,0,1
+ 1926   3A4B   A9 0A                    lda #10
+ 1927   3A4D   A2 0E                    ldx #14
+ 1928   3A4F   A0 08                    ldy #8
+ 1929   3A51   4C 00 3A                 jmp sound
+ 1930                           eat_flash_sound1:       ; 2,-15,120,1
+ 1931   3A54   A9 0A                    lda #10
+ 1932   3A56   A2 0A                    ldx #10
+ 1933   3A58   A0 02                    ldy #2
+ 1934   3A5A   4C 00 3A                 jmp sound
+ 1935                           eat_flash_sound2:       ; 2,-15,150,1
+ 1936   3A5D   A9 0A                    lda #10
+ 1937   3A5F   A2 06                    ldx #6
+ 1938   3A61   A0 02                    ldy #2
+ 1939   3A63   4C 00 3A                 jmp sound
+ 1940                           die_sound:              ; 0,-15,6,10
+ 1941   3A66   A9 64                    lda #100
+ 1942   3A68   A2 1B                    ldx #27
+ 1943   3A6A   A0 04                    ldy #4
+ 1944   3A6C   4C 00 3A                 jmp sound
+ 1945                           end_level_sound:        ; &12,-15,140,1
+ 1946   3A6F   A9 0A                    lda #10
+ 1947   3A71   A2 07                    ldx #7
+ 1948   3A73   A0 02                    ldy #2
+ 1949   3A75   4C 00 3A                 jmp sound
+ 1950                           
+ 1951                           
+ 1952   3A78                    eind_asm
+
+
+
+           Lines Assembled :  1952             Assembly Errors :  0
+
+
+
